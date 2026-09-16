@@ -1,0 +1,19 @@
+# Godot 4: imported assets, editor state, shader cache, export credentials.
+.godot/
+
+# Generated translation resources and temporary scene/resource saves.
+*.translation
+*.tscn.tmp
+*.tres.tmp
+
+# Local export output (keep export_presets.cfg tracked).
+/build/
+/exports/
+
+# Operating system metadata.
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Keep source assets, *.import, *.uid, and addons/ tracked.
+# LimboAI's native libraries are required project dependencies.

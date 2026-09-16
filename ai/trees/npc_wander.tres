@@ -1,0 +1,25 @@
+[gd_resource type="BehaviorTree" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://ai/tasks/choose_wander_destination.gd" id="1"]
+[ext_resource type="Script" path="res://ai/tasks/walk_to_destination.gd" id="2"]
+
+[sub_resource type="BTRandomWait" id="Wait"]
+custom_name = "Rest for 1-3 seconds"
+min_duration = 1.0
+max_duration = 3.0
+
+[sub_resource type="BTAction" id="Choose"]
+script = ExtResource("1")
+custom_name = "Choose reachable destination (A*)"
+
+[sub_resource type="BTAction" id="Walk"]
+script = ExtResource("2")
+custom_name = "Walk slowly to destination"
+
+[sub_resource type="BTSequence" id="Wander"]
+custom_name = "Wander around village"
+children = Array[BTTask]([SubResource("Wait"), SubResource("Choose"), SubResource("Walk")])
+
+[resource]
+description = "Repeat: rest, choose reachable ground, walk. Visibility is handled independently by NPC."
+root_task = SubResource("Wander")
