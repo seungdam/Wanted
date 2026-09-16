@@ -9,7 +9,9 @@ const NPC_SPAWNS: Array[Vector2i] = [Vector2i(3, 8), Vector2i(5, 9), Vector2i(6,
 @export_range(0, 128) var npc_count := 12
 @export_range(0.1, 10.0) var npc_speed := 1.0
 @export_group("Assets")
-const TILE_SIZE := Vector2i(64, 32)
+const TILE_SIZE := Vector2i(192, 96)
+const ATLAS_TILE_SIZE := Vector2i(64, 32)
+const TERRAIN_COLORS: Array[Color] = [Color("548675"), Color("b7a783"), Color("397caa")]
 const BLOCKS: Array[Vector2i] = [Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(10, 9), Vector2i(10, 10), Vector2i(11, 10), Vector2i(3, 11), Vector2i(12, 3)]
 
 @export var terrain_atlas: Texture2D # Three 64x32 tiles: grass, path, water.
@@ -25,6 +27,15 @@ var astar := AStarGrid2D.new()
 func _ready() -> void:
 	map_size = map_size.clamp(Vector2i(16, 16), Vector2i(128, 128))
 	build_ground()
+	build_navigation()
+	spawn_buildings()
+	player.ground = ground
+	player.advance(0.0)
+	player.arrived.connect(_on_arrived)
+	spawn_npcs()
+	$TerrainReveal.setup(ground, player, TERRAIN_COLORS if terrain_atlas == null else [])
+
+func build_navigation() -> void:
 	astar.region = Rect2i(Vector2i.ZERO, map_size)
 	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
@@ -35,16 +46,20 @@ func _ready() -> void:
 			astar.set_point_solid(cell)
 	for cell in BLOCKS:
 		astar.set_point_solid(cell)
+
+func spawn_buildings() -> void:
+	for cell in BLOCKS:
 		var building := Building.new()
 		building.name = "Building_%d_%d" % [cell.x, cell.y]
+		building.set_meta("ground_cell", cell)
 		building.texture = building_texture
 		building.normal_texture = building_normal_texture
-		building.position = ground.map_to_local(cell) + Vector2(0, 14)
+		building.position = ground.map_to_local(cell) + Vector2(0, 28)
+		building.scale = Vector2(2, 2)
 		building.height = 36.0 + (cell.x % 3) * 12.0
 		$Objects.add_child(building)
-	player.ground = ground
-	player.advance(0.0)
-	player.arrived.connect(_on_arrived)
+
+func spawn_npcs() -> void:
 	var destinations: Array[Vector2i] = []
 	for cell in ground.get_used_cells():
 		if is_walkable(cell):
@@ -63,6 +78,7 @@ func _ready() -> void:
 		npc.ground = ground
 		npc.navigation = astar
 		npc.observer = player
+		npc.terrain_reveal = $TerrainReveal
 		npc.destinations = destinations
 		$Objects.add_child(npc)
 		npc.advance(0.0)
@@ -79,7 +95,7 @@ func build_ground() -> void:
 		canvas.diffuse_texture = atlas.texture
 		canvas.normal_texture = terrain_normal_atlas
 		atlas.texture = canvas
-	atlas.texture_region_size = TILE_SIZE
+	atlas.texture_region_size = ATLAS_TILE_SIZE
 	for index in range(3):
 		atlas.create_tile(Vector2i(index, 0))
 	tiles.add_source(atlas, 0)
@@ -96,14 +112,13 @@ func build_ground() -> void:
 func make_placeholder_atlas() -> Texture2D:
 	# Native Image drawing: no external artwork or image-generation dependency.
 	var image := Image.create(192, 32, false, Image.FORMAT_RGBA8)
-	var colors := [Color("548675"), Color("b7a783"), Color("397caa")]
 	for index in range(3):
 		for x in range(64):
 			for y in range(32):
 				var edge := absf((x + 0.5 - 32.0) / 32.0) + absf((y + 0.5 - 16.0) / 16.0)
 				if edge <= 1.0:
-					var color: Color = colors[index]
-					image.set_pixel(index * 64 + x, y, color.darkened(0.17) if edge > 0.91 else color)
+					var color: Color = TERRAIN_COLORS[index]
+					image.set_pixel(index * 64 + x, y, color)
 	return ImageTexture.create_from_image(image)
 
 func is_walkable(cell: Vector2i) -> bool:
@@ -129,12 +144,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _process(_delta: float) -> void:
+	for building in $Objects.get_children():
+		if building.has_meta("ground_cell"):
+			building.visible = $TerrainReveal.is_landed(building.get_meta("ground_cell"))
 	$VisionRange.visible = player.show_vision_range
 	$VisionRange.position = player.position
 	var outline := PackedVector2Array()
 	var origin := ground.map_to_local(Vector2i.ZERO)
 	for index in range(65):
-		var offset := Vector2.from_angle(index * TAU / 64.0) * float(player.vision_radius)
+		var offset: Vector2 = Vector2.from_angle(index * TAU / 64.0) * $TerrainReveal.reveal_radius
 		outline.append(offset.x * (ground.map_to_local(Vector2i.RIGHT) - origin) + offset.y * (ground.map_to_local(Vector2i.DOWN) - origin))
 	$VisionRange.points = outline
 	var points := PackedVector2Array()

@@ -10,10 +10,14 @@ config_version=5
 
 [application]
 
-config/name="Wanted"
+config/name="Wanted (4.7)"
 run/main_scene="res://scenes/village.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+
+[autoload]
+
+MCPRuntime="*uid://b6nuyl4g3wafy"
 
 [display]
 
@@ -21,6 +25,10 @@ window/size/viewport_width=1280
 window/size/viewport_height=800
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/auto_reload/plugin.cfg", "res://addons/godot_mcp_editor/plugin.cfg", "res://addons/godot_mcp_runtime/plugin.cfg")
 
 [physics]
 

@@ -4,6 +4,7 @@
 [ext_resource type="BehaviorTree" path="res://ai/trees/npc_wander.tres" id="2"]
 
 [node name="NPC" type="Node2D"]
+scale = Vector2(2, 2)
 script = ExtResource("1")
 speed = 1.0
 body_color = Color(0.91, 0.57, 0.35, 1)

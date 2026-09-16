@@ -9,6 +9,7 @@ extends "res://scripts/player.gd"
 @export_range(0.0, 30.0) var rest_max_seconds := 3.0
 var navigation: AStarGrid2D
 var observer: Node2D
+var terrain_reveal: Node2D
 var destinations: Array[Vector2i] = []
 var random := RandomNumberGenerator.new()
 @onready var behavior: BTPlayer = $BTPlayer
@@ -51,6 +52,9 @@ func update_visibility(delta: float, instant: bool = false) -> void:
 	var target := 1.0 - smoothstep(radius - width, radius, distance)
 	if ignore_vision:
 		target = 1.0
+	if terrain_reveal != null and not terrain_reveal.is_landed(Vector2i(grid_position.round())):
+		target = 0.0
+		instant = true
 	var alpha := target if instant else lerpf(modulate.a, target, 1.0 - exp(-delta * 6.0 / maxf(fade_seconds, 0.01)))
 	if target == 0.0 and alpha < 0.005:
 		alpha = 0.0

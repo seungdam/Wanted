@@ -4,6 +4,7 @@ func _ready() -> void:
 	var village = preload("res://scenes/village.tscn").instantiate()
 	add_child(village)
 	test_npc(village)
+	test_terrain(village)
 	var clock = village.get_node("WorldClock")
 	clock.set_process(false)
 	assert(clock.solar_direction(6.0).is_equal_approx(clock.EAST))
@@ -85,8 +86,11 @@ func _ready() -> void:
 		assert(ground.local_to_map(ground.map_to_local(cell)) == cell, "Tile conversion roundtrip")
 	assert(ground.get_used_cells().size() == village.map_size.x * village.map_size.y)
 	assert(village.map_size == Vector2i(32, 32) and village.is_walkable(Vector2i(31, 31)))
-	assert(ground.map_to_local(Vector2i(1, 0)) - ground.map_to_local(Vector2i.ZERO) == Vector2(32, 16))
-	assert(ground.map_to_local(Vector2i(0, 1)) - ground.map_to_local(Vector2i.ZERO) == Vector2(-32, 16))
+	assert(ground.map_to_local(Vector2i(1, 0)) - ground.map_to_local(Vector2i.ZERO) == Vector2(96, 48))
+	assert(ground.map_to_local(Vector2i(0, 1)) - ground.map_to_local(Vector2i.ZERO) == Vector2(-96, 48))
+	assert(village.player.scale == Vector2(2, 2))
+	assert(village.get_node("Objects/NPC_3_8").scale == village.player.scale)
+	assert(village.get_node("Objects/Building_4_4").scale == village.player.scale)
 	assert(not village.request_move(Vector2i(-1, 0)))
 	assert(not village.request_move(Vector2i(4, 4)))
 	assert(not village.request_move(Vector2i(15, 15)))
@@ -143,6 +147,8 @@ func _ready() -> void:
 		village.player.advance(20.0)
 		assert(village.player.current_cell == Vector2i(9, 7))
 	print("BASELINE TEST PASS: projection, expanded map, 8 directions, obstacles, corner blocking, retarget, arrival, unreachable target, left/right mouse input")
+	if "--capture-terrain" in OS.get_cmdline_user_args():
+		await capture_terrain(village)
 	if "--capture" in OS.get_cmdline_user_args():
 		remove_child(village)
 		village.queue_free()
@@ -161,6 +167,9 @@ func _ready() -> void:
 
 func test_npc(village: Node2D) -> void:
 	var npc = village.get_node("Objects/NPC_3_8")
+	# Isolate distance fading; terrain visibility is exercised in test_terrain.
+	var terrain = npc.terrain_reveal
+	npc.terrain_reveal = null
 	for child in village.get_node("Objects").get_children():
 		if child.name.begins_with("NPC_"):
 			child.set_physics_process(false)
@@ -235,4 +244,96 @@ func test_npc(village: Node2D) -> void:
 		assert(not npc.visible)
 	assert(not npc.grid_position.is_equal_approx(start), "Hidden NPC still wanders")
 	observer.grid_position = observer_position
+	npc.terrain_reveal = terrain
 	print("NPC TEST PASS: LimboAI BTPlayer, independent trees, Blackboard, wait/select/walk/failure, obstacle routes, fade, hidden simulation")
+
+func test_terrain(village: Node2D) -> void:
+	var terrain = village.get_node("TerrainReveal")
+	var start: Vector2 = village.player.grid_position
+	var count: int = village.ground.get_used_cells().size()
+	assert(terrain.reveal_radius > village.player.vision_radius)
+	assert(terrain.is_landed(village.player.current_cell))
+	assert(not terrain.ages.has(Vector2i(31, 31)))
+	assert(village.is_walkable(Vector2i(31, 31)), "Unrevealed cells remain navigable")
+	for heading in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN, Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+		var forward: Vector2 = heading.normalized()
+		var side := forward.orthogonal()
+		assert(terrain.entry_delay(forward * 4.0, heading) < terrain.entry_delay(forward * 8.0, heading), "Wave travels outward along heading")
+		assert(is_equal_approx(terrain.entry_delay(forward * 4.0 + side * 2.0, heading), terrain.entry_delay(forward * 4.0 - side * 2.0, heading)), "Fan is symmetric")
+		assert(terrain.entry_delay(forward * 4.2, heading) == terrain.entry_delay(forward * 5.2, heading), "Broad bands share a drop time")
+	assert(terrain.entry_delay(Vector2(8, 0), Vector2.RIGHT) != terrain.entry_delay(Vector2(8, 0), Vector2.DOWN), "Direction changes the wave order")
+	assert(terrain.ages[Vector2i(2, 11)] > terrain.ages[Vector2i(2, 15)], "Near forward bands drop first")
+	village._process(0.0)
+	assert(not village.get_node("Objects/Building_3_11").visible, "Building waits for support")
+	terrain.update_reveal(4.0)
+	village._process(0.0)
+	assert(village.get_node("Objects/Building_3_11").visible)
+	assert(terrain.exposed_depth(Vector2i(5, 7), Vector2i(6, 7)) == 0.0, "No internal sides after landing")
+	assert(terrain.exposed_depth(Vector2i(0, 0), Vector2i(-1, 0)) == terrain.thickness)
+	var cell := Vector2i(20, 20)
+	village.player.grid_position = Vector2(cell)
+	terrain.update_reveal(0.0)
+	assert(not terrain.is_landed(cell) and terrain.drop_offset(cell) < 0.0)
+	var age: float = terrain.ages[cell]
+	var heading: Vector2i = village.player.facing
+	village.player.facing = -heading
+	terrain.update_reveal(0.0)
+	assert(terrain.ages[cell] == age, "No duplicate or restarted drop")
+	village.player.facing = heading
+	var last_offset: float = -terrain.drop_height
+	for step in range(11):
+		terrain.ages[cell] = terrain.drop_seconds * step / 10.0
+		var offset: float = terrain.drop_offset(cell)
+		assert(offset >= last_offset and offset <= 0.0, "Slow descent never rebounds")
+		last_offset = offset
+	terrain.ages[cell] = age
+	var npc = village.get_node("Objects/NPC_3_8")
+	var saved_position: Vector2 = npc.grid_position
+	npc.grid_position = Vector2(cell)
+	npc.update_visibility(0.0, true)
+	assert(not npc.visible, "NPC stays hidden until support lands")
+	terrain.update_reveal(4.0)
+	assert(terrain.is_landed(cell) and is_zero_approx(terrain.drop_offset(cell)))
+	npc.update_visibility(0.0, true)
+	assert(npc.visible)
+	village.player.grid_position = Vector2(cell) + Vector2(terrain.reveal_radius + terrain.reveal_margin + 1.0, 0)
+	terrain.update_reveal(0.0)
+	assert(terrain.is_landed(cell), "Exit band retains settled cells")
+	village.player.grid_position = start
+	terrain.update_reveal(0.0)
+	assert(not terrain.ages.has(cell), "Full exit rearms a cell")
+	village.player.grid_position = Vector2(cell)
+	terrain.update_reveal(0.0)
+	assert(not terrain.is_landed(cell), "Re-entry drops again")
+	village.player.grid_position = start
+	terrain.update_reveal(0.0)
+	assert(terrain.ages.has(cell), "Leaving during a drop does not interrupt it")
+	terrain.update_reveal(4.0)
+	assert(not terrain.ages.has(cell), "Finished out-of-range drops retire")
+	assert(village.ground.get_used_cells().size() == count)
+	assert(not village.is_walkable(Vector2i(4, 4)) and not village.is_walkable(Vector2i(15, 15)))
+	npc.grid_position = saved_position
+	print("TERRAIN TEST PASS: 8-direction fan, broad bands, no restart on turns, monotonic drop, sides, NPC support, hysteresis, re-entry, navigation")
+
+func capture_terrain(village: Node2D) -> void:
+	var terrain = village.get_node("TerrainReveal")
+	terrain.set_process(false)
+	village.player.grid_position = Vector2(20, 20)
+	village.player.current_cell = Vector2i(20, 20)
+	village.player.facing = Vector2i(1, 0)
+	village.player.advance(0.0)
+	village.get_node("WorldClock").apply_elapsed(120.0)
+	var camera = village.get_node("Camera2D")
+	camera.tracking_enabled = false
+	camera.global_position = village.player.global_position + camera.tracking_offset
+	terrain.ages.clear()
+	terrain.last_center = Vector2.INF
+	terrain.update_reveal(0.0, true)
+	for entry in [[0.7, "drop"], [4.0, "landed"]]:
+		terrain.update_reveal(entry[0])
+		for child in village.get_node("Objects").get_children():
+			if child.name.begins_with("NPC_"):
+				child.update_visibility(0.0, true)
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		assert(get_viewport().get_texture().get_image().save_png("res://tests/terrain-" + entry[1] + ".png") == OK)
