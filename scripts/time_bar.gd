@@ -2,7 +2,7 @@ extends Control
 ## Drawn with native UI primitives; CanvasLayer keeps the HUD out of world lighting.
 @export var clock_path: NodePath
 @onready var clock = get_node(clock_path)
-var font: Font = ThemeDB.fallback_font
+var font: Font = preload("res://font/Moneygraphy-Pixel.ttf")
 var panel := StyleBoxFlat.new()
 
 func _ready() -> void:
