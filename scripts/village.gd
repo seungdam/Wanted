@@ -4,15 +4,18 @@ const Building = preload("res://scripts/building.gd")
 const NPC = preload("res://scenes/npc.tscn")
 const NPC_SPAWNS: Array[Vector2i] = [Vector2i(3, 8), Vector2i(5, 9), Vector2i(6, 8), Vector2i(8, 8), Vector2i(11, 5), Vector2i(9, 12)]
 @export_group("Map - restart to apply")
-@export var map_size := Vector2i(32, 32)
+@export var map_size := Vector2i(16, 16)
 @export_group("NPC Spawn - restart to apply")
-@export_range(0, 128) var npc_count := 12
+@export_range(1, 4) var npc_count := 4
+@export var resident_join_days: Array[int] = [1, 2, 3, 4]
+const RESIDENT_COLORS: Array[Color] = [Color("60834d"), Color("bb7858"), Color("6e91a0"), Color("c3a151")]
+var residents: Array[Node2D] = []
 @export_range(0.1, 10.0) var npc_speed := 1.0
 @export_group("Assets")
-const TILE_SIZE := Vector2i(192, 96)
+const TILE_SIZE := Vector2i(128, 64)
 const ATLAS_TILE_SIZE := Vector2i(64, 32)
-const TERRAIN_COLORS: Array[Color] = [Color("548675"), Color("b7a783"), Color("397caa")]
-const BLOCKS: Array[Vector2i] = [Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(10, 9), Vector2i(10, 10), Vector2i(11, 10), Vector2i(3, 11), Vector2i(12, 3)]
+const TERRAIN_COLORS: Array[Color] = [Color("829b57"), Color("d8bb86"), Color("74aeb4")]
+const BLOCKS: Array[Vector2i] = [Vector2i(4, 4), Vector2i(10, 5), Vector2i(10, 10), Vector2i(4, 11)]
 
 @export var terrain_atlas: Texture2D # Three 64x32 tiles: grass, path, water.
 @export var terrain_normal_atlas: Texture2D
@@ -33,7 +36,10 @@ func _ready() -> void:
 	player.advance(0.0)
 	player.arrived.connect(_on_arrived)
 	spawn_npcs()
-	$TerrainReveal.setup(ground, player, TERRAIN_COLORS if terrain_atlas == null else [])
+	update_residents($WorldClock.day)
+	$Camera2D._process(0.0)
+	$Camera2D.force_update_scroll()
+	$TerrainReveal.setup(ground, player)
 
 func build_navigation() -> void:
 	astar.region = Rect2i(Vector2i.ZERO, map_size)
@@ -54,9 +60,10 @@ func spawn_buildings() -> void:
 		building.set_meta("ground_cell", cell)
 		building.texture = building_texture
 		building.normal_texture = building_normal_texture
-		building.position = ground.map_to_local(cell) + Vector2(0, 28)
+		building.position = ground.to_global(ground.map_to_local(cell)) + Vector2(0, 24)
 		building.scale = Vector2(2, 2)
-		building.height = 36.0 + (cell.x % 3) * 12.0
+		building.height = 44.0
+		building.observer = player
 		$Objects.add_child(building)
 
 func spawn_npcs() -> void:
@@ -68,7 +75,7 @@ func spawn_npcs() -> void:
 	for cell in destinations:
 		if not spawn_cells.has(cell) and cell != player.current_cell:
 			spawn_cells.append(cell)
-	for index in range(mini(npc_count, spawn_cells.size())):
+	for index in range(mini(clampi(npc_count, 1, 4), spawn_cells.size())):
 		var cell := spawn_cells[index]
 		var npc = NPC.instantiate()
 		npc.speed = npc_speed
@@ -77,15 +84,17 @@ func spawn_npcs() -> void:
 		npc.grid_position = Vector2(cell)
 		npc.ground = ground
 		npc.navigation = astar
-		npc.observer = player
-		npc.terrain_reveal = $TerrainReveal
+		npc.body_color = RESIDENT_COLORS[index]
+		npc.join_day = clampi(resident_join_days[index], 1, 5) if index < resident_join_days.size() else index + 1
 		npc.destinations = destinations
 		$Objects.add_child(npc)
 		npc.advance(0.0)
+		residents.append(npc)
 
 func build_ground() -> void:
 	var tiles := TileSet.new()
-	tiles.tile_size = TILE_SIZE
+	tiles.tile_size = ATLAS_TILE_SIZE
+	ground.scale = Vector2(TILE_SIZE) / Vector2(ATLAS_TILE_SIZE)
 	tiles.tile_shape = TileSet.TILE_SHAPE_ISOMETRIC
 	tiles.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_DOWN
 	var atlas := TileSetAtlasSource.new()
@@ -118,6 +127,13 @@ func make_placeholder_atlas() -> Texture2D:
 				var edge := absf((x + 0.5 - 32.0) / 32.0) + absf((y + 0.5 - 16.0) / 16.0)
 				if edge <= 1.0:
 					var color: Color = TERRAIN_COLORS[index]
+					var noise := posmod(x * 37 + y * 17 + index * 13, 97)
+					if noise < 7:
+						color = color.lightened(0.08)
+					elif noise > 90:
+						color = color.darkened(0.06)
+					if index == 2 and y % 7 == 0 and x % 13 < 5:
+						color = Color("b3d8cb")
 					image.set_pixel(index * 64 + x, y, color)
 	return ImageTexture.create_from_image(image)
 
@@ -143,23 +159,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		request_move(ground.local_to_map(local_click))
 		get_viewport().set_input_as_handled()
 
+func update_residents(day: int) -> void:
+	for npc in residents:
+		npc.set_joined(day >= npc.join_day)
+
 func _process(_delta: float) -> void:
+	update_residents($WorldClock.day)
 	for building in $Objects.get_children():
 		if building.has_meta("ground_cell"):
 			building.visible = $TerrainReveal.is_landed(building.get_meta("ground_cell"))
-	$VisionRange.visible = player.show_vision_range
-	$VisionRange.position = player.position
-	var outline := PackedVector2Array()
-	var origin := ground.map_to_local(Vector2i.ZERO)
-	for index in range(65):
-		var offset: Vector2 = Vector2.from_angle(index * TAU / 64.0) * $TerrainReveal.reveal_radius
-		outline.append(offset.x * (ground.map_to_local(Vector2i.RIGHT) - origin) + offset.y * (ground.map_to_local(Vector2i.DOWN) - origin))
-	$VisionRange.points = outline
 	var points := PackedVector2Array()
 	if not player.route.is_empty():
 		points.append(player.position)
 		for cell in player.route:
-			points.append(ground.map_to_local(cell))
+			points.append(ground.to_global(ground.map_to_local(cell)))
 	route_line.points = points
 
 func _on_arrived(cell: Vector2i) -> void:

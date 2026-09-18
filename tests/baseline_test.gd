@@ -4,7 +4,8 @@ func _ready() -> void:
 	var village = preload("res://scenes/village.tscn").instantiate()
 	add_child(village)
 	test_npc(village)
-	test_terrain(village)
+	test_viewport_drop(village)
+	test_occlusion(village)
 	var clock = village.get_node("WorldClock")
 	clock.set_process(false)
 	assert(clock.solar_direction(6.0).is_equal_approx(clock.EAST))
@@ -85,9 +86,9 @@ func _ready() -> void:
 	for cell in ground.get_used_cells():
 		assert(ground.local_to_map(ground.map_to_local(cell)) == cell, "Tile conversion roundtrip")
 	assert(ground.get_used_cells().size() == village.map_size.x * village.map_size.y)
-	assert(village.map_size == Vector2i(32, 32) and village.is_walkable(Vector2i(31, 31)))
-	assert(ground.map_to_local(Vector2i(1, 0)) - ground.map_to_local(Vector2i.ZERO) == Vector2(96, 48))
-	assert(ground.map_to_local(Vector2i(0, 1)) - ground.map_to_local(Vector2i.ZERO) == Vector2(-96, 48))
+	assert(village.map_size == Vector2i(16, 16) and village.is_walkable(Vector2i(15, 0)))
+	assert(ground.map_to_local(Vector2i(1, 0)) - ground.map_to_local(Vector2i.ZERO) == Vector2(32, 16))
+	assert(ground.map_to_local(Vector2i(0, 1)) - ground.map_to_local(Vector2i.ZERO) == Vector2(-32, 16))
 	assert(village.player.scale == Vector2(2, 2))
 	assert(village.get_node("Objects/NPC_3_8").scale == village.player.scale)
 	assert(village.get_node("Objects/Building_4_4").scale == village.player.scale)
@@ -118,7 +119,7 @@ func _ready() -> void:
 	assert(village.player.grid_position == before, "Retarget must not teleport")
 	village.player.advance(20.0)
 	assert(village.player.current_cell == Vector2i(2, 12))
-	assert(village.player.position.is_equal_approx(ground.map_to_local(Vector2i(2, 12))))
+	assert(village.player.position.is_equal_approx(ground.to_global(ground.map_to_local(Vector2i(2, 12)))))
 	assert(village.player.route.is_empty())
 	assert(village.request_move(Vector2i(2, 12)))
 	village.player.advance(0.0)
@@ -147,8 +148,6 @@ func _ready() -> void:
 		village.player.advance(20.0)
 		assert(village.player.current_cell == Vector2i(9, 7))
 	print("BASELINE TEST PASS: projection, expanded map, 8 directions, obstacles, corner blocking, retarget, arrival, unreachable target, left/right mouse input")
-	if "--capture-terrain" in OS.get_cmdline_user_args():
-		await capture_terrain(village)
 	if "--capture" in OS.get_cmdline_user_args():
 		remove_child(village)
 		village.queue_free()
@@ -156,20 +155,40 @@ func _ready() -> void:
 		add_child(preview)
 		var preview_clock = preview.get_node("WorldClock")
 		preview_clock.set_process(false)
-		for entry in [[80.0, "morning"], [120.0, "daytime"], [160.0, "afternoon"], [220.0, "night"]]:
+		for entry in [[80.0, "morning"], [120.0, "daytime"], [160.0, "afternoon"], [220.0, "night"], [840.0, "day4"]]:
 			preview_clock.apply_elapsed(entry[0])
 			await get_tree().process_frame
 			await RenderingServer.frame_post_draw
 			var error := get_viewport().get_texture().get_image().save_png("res://tests/" + entry[1] + "-preview.png")
 			assert(error == OK, "Screenshot saved")
-		print("PREVIEWS SAVED: morning, daytime, night")
+		var cabin = preview.get_node("Objects/Building_4_4")
+		preview.player.global_position = cabin.global_position + Vector2(0, -25)
+		preview.player.set_physics_process(false)
+		preview.get_node("Camera2D").global_position = cabin.global_position
+		preview.get_node("Camera2D").tracking_enabled = false
+		cabin._process(2.0)
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		assert(get_viewport().get_texture().get_image().save_png("res://tests/occlusion-preview.png") == OK)
+		print("PREVIEWS SAVED: morning, daytime, afternoon, night, day4, occlusion")
 	get_tree().quit()
 
 func test_npc(village: Node2D) -> void:
 	var npc = village.get_node("Objects/NPC_3_8")
-	# Isolate distance fading; terrain visibility is exercised in test_terrain.
-	var terrain = npc.terrain_reveal
-	npc.terrain_reveal = null
+	for day in range(1, 7):
+		village.update_residents(day)
+		var count := 0
+		for resident in village.residents:
+			count += int(resident.joined)
+			assert(resident.visible == resident.joined)
+			assert(resident.is_physics_processing() == resident.joined)
+		assert(count == mini(day, 4), "Daily arrivals cap at four")
+	village.update_residents(1)
+	assert(not village.residents[1].joined, "Preview rewinds without duplicate residents")
+	assert(village.residents.size() == 4)
+	village.update_residents(4)
+	assert(village.has_node("TerrainReveal") and not village.has_node("VisionRange"))
+	assert(not village.ground.visible, "Visual terrain renderer owns ground rendering")
 	for child in village.get_node("Objects").get_children():
 		if child.name.begins_with("NPC_"):
 			child.set_physics_process(false)
@@ -212,128 +231,124 @@ func test_npc(village: Node2D) -> void:
 	assert(root.get_status() == BT.FAILURE, "No destination fails cleanly")
 	assert(npc.route.is_empty())
 	npc.destinations = saved_destinations
-	var observer = village.player
-	var observer_position: Vector2 = observer.grid_position
-	npc.grid_position = observer_position
-	npc.update_visibility(0.0, true)
-	assert(npc.visible and npc.modulate.a == 1.0)
-	npc.grid_position = observer_position + Vector2(observer.vision_radius - observer.vision_fade_width / 2, 0)
-	npc.update_visibility(0.0, true)
-	assert(absf(npc.modulate.a - 0.5) < 0.001, "Spatial fade has a smooth half-alpha boundary")
-	npc.grid_position = observer_position + Vector2(observer.vision_radius + 1, 0)
-	npc.update_visibility(0.01)
-	assert(npc.visible and npc.modulate.a > 0.0 and npc.modulate.a < 0.5, "Leaving vision fades rather than popping")
-	npc.update_visibility(1.0)
-	assert(not npc.visible and npc.modulate.a == 0.0, "Fully faded NPC disables rendering")
-	npc.ignore_vision = true
-	npc.update_visibility(0.0, true)
-	assert(npc.visible and npc.modulate.a == 1.0)
-	npc.ignore_vision = false
-	npc.update_visibility(0.0, true)
-	npc.grid_position = observer_position
-	npc.update_visibility(0.01)
-	assert(npc.visible and npc.modulate.a > 0.0 and npc.modulate.a < 1.0, "Re-entry fades in")
-	# Hidden NPCs keep their simulation running and use the same obstacle-aware mover.
-	npc.grid_position = Vector2(npc.current_cell)
-	observer.grid_position = Vector2(-100, -100)
-	npc.update_visibility(0.0, true)
-	start = npc.grid_position
-	for index in range(300):
+	var saved_player: Vector2 = village.player.position
+	village.player.position = Vector2(-10000, -10000)
+	for step in range(30):
 		npc._physics_process(0.1)
-		assert(village.is_walkable(village.ground.local_to_map(npc.position)))
-		assert(not npc.visible)
-	assert(not npc.grid_position.is_equal_approx(start), "Hidden NPC still wanders")
-	observer.grid_position = observer_position
-	npc.terrain_reveal = terrain
-	print("NPC TEST PASS: LimboAI BTPlayer, independent trees, Blackboard, wait/select/walk/failure, obstacle routes, fade, hidden simulation")
+		assert(npc.visible and npc.modulate.a == 1.0, "Residents have no distance visibility restriction")
+	village.player.position = saved_player
+	village.update_residents(1)
+	print("NPC TEST PASS: daily arrivals, four-resident cap, preview rewind, LimboAI wandering, no vision culling")
 
-func test_terrain(village: Node2D) -> void:
-	var terrain = village.get_node("TerrainReveal")
-	var start: Vector2 = village.player.grid_position
-	var count: int = village.ground.get_used_cells().size()
-	assert(terrain.reveal_radius > village.player.vision_radius)
-	assert(terrain.is_landed(village.player.current_cell))
-	assert(not terrain.ages.has(Vector2i(31, 31)))
-	assert(village.is_walkable(Vector2i(31, 31)), "Unrevealed cells remain navigable")
-	for heading in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN, Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
-		var forward: Vector2 = heading.normalized()
-		var side := forward.orthogonal()
-		assert(terrain.entry_delay(forward * 4.0, heading) < terrain.entry_delay(forward * 8.0, heading), "Wave travels outward along heading")
-		assert(is_equal_approx(terrain.entry_delay(forward * 4.0 + side * 2.0, heading), terrain.entry_delay(forward * 4.0 - side * 2.0, heading)), "Fan is symmetric")
-		assert(terrain.entry_delay(forward * 4.2, heading) == terrain.entry_delay(forward * 5.2, heading), "Broad bands share a drop time")
-	assert(terrain.entry_delay(Vector2(8, 0), Vector2.RIGHT) != terrain.entry_delay(Vector2(8, 0), Vector2.DOWN), "Direction changes the wave order")
-	assert(terrain.ages[Vector2i(2, 11)] > terrain.ages[Vector2i(2, 15)], "Near forward bands drop first")
-	village._process(0.0)
-	assert(not village.get_node("Objects/Building_3_11").visible, "Building waits for support")
-	terrain.update_reveal(4.0)
-	village._process(0.0)
-	assert(village.get_node("Objects/Building_3_11").visible)
-	assert(terrain.exposed_depth(Vector2i(5, 7), Vector2i(6, 7)) == 0.0, "No internal sides after landing")
-	assert(terrain.exposed_depth(Vector2i(0, 0), Vector2i(-1, 0)) == terrain.thickness)
-	var cell := Vector2i(20, 20)
-	village.player.grid_position = Vector2(cell)
-	terrain.update_reveal(0.0)
-	assert(not terrain.is_landed(cell) and terrain.drop_offset(cell) < 0.0)
-	var age: float = terrain.ages[cell]
-	var heading: Vector2i = village.player.facing
-	village.player.facing = -heading
-	terrain.update_reveal(0.0)
-	assert(terrain.ages[cell] == age, "No duplicate or restarted drop")
-	village.player.facing = heading
-	var last_offset: float = -terrain.drop_height
-	for step in range(11):
-		terrain.ages[cell] = terrain.drop_seconds * step / 10.0
-		var offset: float = terrain.drop_offset(cell)
-		assert(offset >= last_offset and offset <= 0.0, "Slow descent never rebounds")
-		last_offset = offset
-	terrain.ages[cell] = age
-	var npc = village.get_node("Objects/NPC_3_8")
-	var saved_position: Vector2 = npc.grid_position
-	npc.grid_position = Vector2(cell)
-	npc.update_visibility(0.0, true)
-	assert(not npc.visible, "NPC stays hidden until support lands")
-	terrain.update_reveal(4.0)
-	assert(terrain.is_landed(cell) and is_zero_approx(terrain.drop_offset(cell)))
-	npc.update_visibility(0.0, true)
-	assert(npc.visible)
-	village.player.grid_position = Vector2(cell) + Vector2(terrain.reveal_radius + terrain.reveal_margin + 1.0, 0)
-	terrain.update_reveal(0.0)
-	assert(terrain.is_landed(cell), "Exit band retains settled cells")
-	village.player.grid_position = start
-	terrain.update_reveal(0.0)
-	assert(not terrain.ages.has(cell), "Full exit rearms a cell")
-	village.player.grid_position = Vector2(cell)
-	terrain.update_reveal(0.0)
-	assert(not terrain.is_landed(cell), "Re-entry drops again")
-	village.player.grid_position = start
-	terrain.update_reveal(0.0)
-	assert(terrain.ages.has(cell), "Leaving during a drop does not interrupt it")
-	terrain.update_reveal(4.0)
-	assert(not terrain.ages.has(cell), "Finished out-of-range drops retire")
-	assert(village.ground.get_used_cells().size() == count)
-	assert(not village.is_walkable(Vector2i(4, 4)) and not village.is_walkable(Vector2i(15, 15)))
-	npc.grid_position = saved_position
-	print("TERRAIN TEST PASS: 8-direction fan, broad bands, no restart on turns, monotonic drop, sides, NPC support, hysteresis, re-entry, navigation")
+func test_occlusion(village: Node2D) -> void:
+	var building = village.get_node("Objects/Building_4_4")
+	var saved: Vector2 = village.player.global_position
+	village.player.global_position = building.global_position + Vector2(0, -25)
+	assert(building.is_obscuring_player(), "Player behind artwork is detected")
+	building._process(0.1)
+	assert(building.modulate.a < 1.0 and building.modulate.a > building.occluded_alpha, "Fade is smooth")
+	building._process(2.0)
+	assert(absf(building.modulate.a - building.occluded_alpha) < 0.01)
+	village.player.global_position = building.global_position + Vector2(0, 20)
+	assert(not building.is_obscuring_player(), "Player in front does not fade building")
+	building._process(2.0)
+	assert(building.modulate.a > 0.99)
+	village.player.global_position = building.global_position + Vector2(300, -25)
+	assert(not building.is_obscuring_player(), "No fade when horizontally separated")
+	village.player.global_position = saved
+	print("OCCLUSION TEST PASS: behind/front/side and smooth fade/restoration")
 
-func capture_terrain(village: Node2D) -> void:
+func test_viewport_drop(village: Node2D) -> void:
 	var terrain = village.get_node("TerrainReveal")
-	terrain.set_process(false)
-	village.player.grid_position = Vector2(20, 20)
-	village.player.current_cell = Vector2i(20, 20)
-	village.player.facing = Vector2i(1, 0)
-	village.player.advance(0.0)
-	village.get_node("WorldClock").apply_elapsed(120.0)
 	var camera = village.get_node("Camera2D")
+	var saved_position: Vector2 = camera.global_position
+	var saved_zoom: Vector2 = camera.zoom
 	camera.tracking_enabled = false
-	camera.global_position = village.player.global_position + camera.tracking_offset
-	terrain.ages.clear()
-	terrain.last_center = Vector2.INF
-	terrain.update_reveal(0.0, true)
-	for entry in [[0.7, "drop"], [4.0, "landed"]]:
-		terrain.update_reveal(entry[0])
-		for child in village.get_node("Objects").get_children():
-			if child.name.begins_with("NPC_"):
-				child.update_visibility(0.0, true)
-		await get_tree().process_frame
-		await RenderingServer.frame_post_draw
-		assert(get_viewport().get_texture().get_image().save_png("res://tests/terrain-" + entry[1] + ".png") == OK)
+	assert(not terrain.whole_world_visible, "Default map exceeds viewport")
+	assert(terrain.cells.size() < village.ground.get_used_cells().size())
+	assert(terrain.global_transform == village.ground.global_transform, "Pixel tile scale preserved")
+	var target := Vector2i(12, 2)
+	var camera_destination := Vector2(192, 256)
+	assert(not terrain.ages.has(target))
+	assert(village.is_walkable(target), "Offscreen cells stay navigable")
+	camera.global_position = camera_destination
+	camera.force_update_scroll()
+	terrain.update_reveal(0.0)
+	assert(terrain.is_landed(target), "Interior tiles appear immediately, including large camera jumps")
+	var dropping: Array[Vector2i] = []
+	for cell in terrain.cells:
+		if not terrain.is_landed(cell):
+			dropping.append(cell)
+			assert(terrain.is_edge_tile(terrain.tile_screen_rect(cell), terrain.get_viewport_rect()))
+	assert(not dropping.is_empty() and dropping.size() <= terrain.max_active_drops, "Only a small capped subset drops")
+	assert(dropping.size() < terrain.cells.size() / 2)
+	target = dropping[0]
+	var age: float = terrain.ages[target]
+	var delays := {}
+	for cell in terrain.cells:
+		if terrain.ages[cell] < 0.0:
+			delays[snappedf(terrain.ages[cell], 0.001)] = true
+	assert(delays.size() == dropping.size(), "Selected tiles keep distinct start times")
+	var view := Rect2(0, 0, 1280, 800)
+	var earliest := 1.0
+	var latest := 0.0
+	for row in range(16):
+		var cell := Vector2i(15, row)
+		var rect := Rect2(1250, row * 48, 64, 32)
+		var delay: float = terrain.entry_delay(cell, rect, view)
+		assert(delay == terrain.entry_delay(cell, rect, view), "Stagger is deterministic")
+		assert(delay >= 0.0 and delay <= terrain.edge_sweep_seconds + terrain.tile_stagger_seconds, "No unbounded reveal queue")
+		earliest = minf(earliest, delay)
+		latest = maxf(latest, delay)
+	assert(latest - earliest > 0.1, "Same-edge arrivals spread across time")
+	var saved_stagger: float = terrain.tile_stagger_seconds
+	terrain.tile_stagger_seconds = 0.0
+	assert(terrain.entry_delay(target, Rect2(1250, 200, 64, 32), view) < terrain.entry_delay(target, Rect2(1250, 600, 64, 32), view), "Continuous screen-edge sweep, independent of player facing")
+	terrain.tile_stagger_seconds = saved_stagger
+	terrain.update_reveal(0.0)
+	assert(terrain.ages[target] == age, "No restart while in viewport")
+	var previous: float = terrain.drop_offset(target)
+	for step in range(30):
+		terrain.update_reveal(0.1)
+		var offset: float = terrain.drop_offset(target)
+		assert(offset >= previous and offset <= 0.0, "Monotonic descent")
+		previous = offset
+	assert(terrain.is_landed(target))
+	camera.global_position += Vector2(8, 0)
+	camera.force_update_scroll()
+	terrain.update_reveal(0.0)
+	assert(terrain.is_landed(target), "Small camera motion does not rearm")
+	camera.global_position = Vector2(-5000, -5000)
+	camera.force_update_scroll()
+	terrain.update_reveal(3.0)
+	assert(not terrain.ages.has(target), "Far-offscreen tile rearms")
+	camera.global_position = camera_destination
+	camera.force_update_scroll()
+	terrain.update_reveal(0.0)
+	assert(terrain.ages.has(target), "Re-entry renders immediately even if drop slots are full")
+	for cell in terrain.cells:
+		if not terrain.is_landed(cell):
+			target = cell
+			break
+	camera.global_position = village.ground.to_global(village.ground.map_to_local(target))
+	camera.force_update_scroll()
+	terrain.update_reveal(0.0)
+	assert(terrain.is_landed(target), "Drops stop when camera brings them into the interior")
+	terrain.drop_enabled = false
+	terrain.update_reveal(0.0)
+	assert(terrain.cells.size() == village.ground.get_used_cells().size())
+	assert(terrain.is_landed(target), "Inspector toggle settles terrain")
+	terrain.drop_enabled = true
+	camera.global_position = village.ground.to_global(village.ground.map_to_local(Vector2i(7, 7)))
+	camera.zoom = Vector2(0.3, 0.3)
+	camera.force_update_scroll()
+	terrain.update_reveal(0.0)
+	assert(terrain.whole_world_visible, "Zoom-out showing entire map bypasses drop")
+	for cell in village.ground.get_used_cells():
+		assert(terrain.is_landed(cell))
+	camera.zoom = saved_zoom
+	camera.global_position = saved_position
+	camera.force_update_scroll()
+	terrain.update_reveal(3.0)
+	camera.tracking_enabled = true
+	print("VIEWPORT DROP TEST PASS: camera entry, scale, no restart, smooth fall, re-entry, toggle, whole-world zoom-out, navigation")

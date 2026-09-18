@@ -5,9 +5,14 @@ extends Node2D
 @export var sprite_offset := Vector2(0, -30)
 @export var tint := Color("c5a578")
 @export var height: float = 44.0
+@export_range(0.1, 1.0) var occluded_alpha := 0.35
+@export_range(1.0, 20.0) var fade_speed := 8.0
+var observer: Node2D
+var sprite: Sprite2D
 
 func _ready() -> void:
-	var sprite := Sprite2D.new()
+	sprite = Sprite2D.new()
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.name = "Sprite2D"
 	if texture == null:
 		sprite.texture = make_placeholder()
@@ -37,6 +42,10 @@ func make_placeholder() -> CanvasTexture:
 			for face in range(3):
 				if Geometry2D.is_point_in_polygon(point, faces[face]):
 					var color := tint
+					if face == 2:
+						color = Color("62804b") if y % 6 > 0 else Color("465d39")
+					elif y % 9 == 0:
+						color = tint.darkened(0.15)
 					if Rect2(6, -height + 8, 9, 13).has_point(point):
 						color = Color("435966")
 					if Rect2(-12, -20, 9, 16).has_point(point):
@@ -48,3 +57,24 @@ func make_placeholder() -> CanvasTexture:
 	canvas.diffuse_texture = ImageTexture.create_from_image(image)
 	canvas.normal_texture = ImageTexture.create_from_image(normals)
 	return canvas
+
+func is_obscuring_player() -> bool:
+	if observer == null or observer.global_position.y >= global_position.y:
+		return false
+	var actor := observer.get_node_or_null("Sprite2D") as Sprite2D
+	if actor == null or actor.texture == null:
+		return false
+	var overlap: Rect2 = (sprite.global_transform * sprite.get_rect()).intersection(actor.global_transform * actor.get_rect())
+	if not overlap.has_area():
+		return false
+	# Sample opaque artwork, not just its transparent rectangular padding.
+	for x in range(5):
+		for y in range(5):
+			var point := overlap.position + overlap.size * Vector2((x + 0.5) / 5.0, (y + 0.5) / 5.0)
+			if sprite.is_pixel_opaque(sprite.to_local(point)) and actor.is_pixel_opaque(actor.to_local(point)):
+				return true
+	return false
+
+func _process(delta: float) -> void:
+	var target := occluded_alpha if is_obscuring_player() else 1.0
+	modulate.a = lerpf(modulate.a, target, 1.0 - exp(-fade_speed * delta))

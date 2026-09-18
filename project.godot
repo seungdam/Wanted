@@ -36,7 +36,8 @@ enabled=PackedStringArray("res://addons/auto_reload/plugin.cfg", "res://addons/g
 
 [rendering]
 
+textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-environment/defaults/default_clear_color=Color(0.055, 0.08, 0.12, 1)
+environment/defaults/default_clear_color=Color(0.24, 0.29, 0.21, 1)

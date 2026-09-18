@@ -4,17 +4,19 @@ signal arrived(cell: Vector2i)
 signal facing_changed(direction: Vector2i)
 
 @export var speed: float = 3.5 # Grid units per second; projection keeps world speed uniform.
-@export var body_color := Color("399dd9")
+@export var body_color := Color("60834d")
 @export var selection_ring := true
-@export_group("Vision")
-@export_range(0.5, 30.0, 0.5) var vision_radius: float = 9.0
-@export_range(0.1, 5.0, 0.1) var vision_fade_width: float = 1.5
-@export var show_vision_range := true
-var current_cell := Vector2i(2, 7)
+var current_cell := Vector2i(7, 9)
 var facing := Vector2i(0, 1)
 var route: Array[Vector2i] = []
-var grid_position := Vector2(2, 7)
+var grid_position := Vector2(7, 9)
 var ground: TileMapLayer
+
+func _ready() -> void:
+	if $Sprite2D.texture == null:
+		$Sprite2D.texture = preload("res://scripts/pixel_art.gd").resident(body_color)
+		$Sprite2D.position = Vector2(0, -22)
+	$Sprite2D.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 func follow_path(path: Array[Vector2i]) -> void:
 	# Finish the active edge before a new route: never cut through blocked corners.
@@ -47,24 +49,12 @@ func advance(delta: float) -> void:
 		if route.is_empty():
 			arrived.emit(current_cell)
 	var origin := ground.map_to_local(Vector2i.ZERO)
-	position = origin + grid_position.x * (ground.map_to_local(Vector2i.RIGHT) - origin) + grid_position.y * (ground.map_to_local(Vector2i.DOWN) - origin)
+	global_position = ground.to_global(origin + grid_position.x * (ground.map_to_local(Vector2i.RIGHT) - origin) + grid_position.y * (ground.map_to_local(Vector2i.DOWN) - origin))
+	$Sprite2D.flip_h = facing.x - facing.y < 0
 	queue_redraw()
 
 func _draw() -> void:
-	if $Sprite2D.texture != null:
-		return
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.45))
-	draw_circle(Vector2.ZERO, 16.0, Color(0.02, 0.04, 0.06, 0.4))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.4))
+	draw_circle(Vector2.ZERO, 12.0, Color(0.19, 0.14, 0.09, 0.3))
 	if selection_ring:
-		draw_arc(Vector2.ZERO, 20.0, 0.0, TAU, 32, Color("80eaff"), 2.0, true)
-	draw_set_transform(Vector2.ZERO)
-	draw_style_box(_body_style(), Rect2(-10, -30, 20, 26))
-	draw_circle(Vector2(0, -37), 9, Color("f5d8a8"))
-	var heading := Vector2(facing.x - facing.y, (facing.x + facing.y) * 0.5).normalized()
-	draw_line(Vector2(0, -18), Vector2(0, -18) + heading * 15, Color.WHITE, 3.0, true)
-
-func _body_style() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = body_color
-	style.set_corner_radius_all(6)
-	return style
+		draw_arc(Vector2.ZERO, 17.0, 0.0, TAU, 12, Color("f5d995"), 1.0, false)

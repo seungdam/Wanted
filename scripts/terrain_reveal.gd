@@ -1,31 +1,37 @@
 extends Node2D
 ## Visual-only blocks. Ground remains the authoritative tile map for movement.
-@export_range(1.0, 30.0, 0.5) var reveal_radius := 10.0
-@export_range(0.0, 5.0, 0.5) var reveal_margin := 2.0
-@export_range(0.5, 5.0, 0.5) var exit_margin := 2.0
-@export_range(4.0, 96.0) var thickness := 48.0
-@export_range(0.0, 800.0) var drop_height := 320.0
-@export_range(0.1, 5.0, 0.05) var drop_seconds := 1.8
-@export_range(0.0, 0.3, 0.01) var wave_delay := 0.12
-@export_range(1.0, 4.0, 0.5) var wave_band_width := 2.0
+@export var drop_enabled := true
+@export_range(16.0, 200.0, 8.0) var edge_band_pixels := 80.0
+@export_range(0.0, 1.0, 0.05) var animated_fraction := 0.3
+@export_range(0, 24) var max_active_drops := 6
+@export_range(0.0, 256.0, 8.0) var screen_margin := 32.0
+@export_range(0.0, 512.0, 8.0) var exit_margin := 128.0
+@export_range(4.0, 96.0) var thickness := 12.0
+@export_range(0.0, 800.0) var drop_height := 32.0
+@export_range(0.1, 5.0, 0.05) var drop_seconds := 0.6
+@export_range(0.0, 0.5, 0.01) var edge_sweep_seconds := 0.22
+@export_range(0.0, 0.2, 0.01) var tile_stagger_seconds := 0.08
 @export var left_soil := Color("ae8059")
 @export var right_soil := Color("8b6047")
 @export var grid_color := Color(0.12, 0.23, 0.18, 0.32)
-@export_range(0.0, 4.0, 0.25) var grid_width := 1.5
+@export_range(0.0, 4.0, 0.25) var grid_width := 0.0
 var ground: TileMapLayer
 var observer: Node2D
 var ages: Dictionary = {}
 var cells: Array[Vector2i] = []
 var atlas: TileSetAtlasSource
 var flat_colors: Array[Color] = []
-var last_center := Vector2.INF
-var last_radius := -1.0
+var all_cells: Array[Vector2i] = []
+var whole_world_visible := false
 
 func setup(map: TileMapLayer, player: Node2D, colors: Array[Color] = []) -> void:
 	ground = map
 	observer = player
 	flat_colors = colors
 	atlas = ground.tile_set.get_source(0) as TileSetAtlasSource
+	global_transform = ground.global_transform
+	process_priority = 10 # Evaluate after camera tracking, including lerp and zoom.
+	all_cells = ground.get_used_cells()
 	ground.hide()
 	update_reveal(0.0, true)
 
@@ -33,51 +39,86 @@ func _process(delta: float) -> void:
 	if ground != null:
 		update_reveal(delta)
 
+func tile_screen_rect(cell: Vector2i) -> Rect2:
+	var half := Vector2(ground.tile_set.tile_size) * 0.5
+	return ground.get_global_transform_with_canvas() * Rect2(ground.map_to_local(cell) - half, half * 2.0)
+
 func update_reveal(delta: float, initial: bool = false) -> void:
-	var center: Vector2 = observer.grid_position
-	var radius := reveal_radius + reveal_margin
+	var view := get_viewport_rect()
+	var world_rect := Rect2()
+	for index in range(all_cells.size()):
+		var rect := tile_screen_rect(all_cells[index])
+		world_rect = rect if index == 0 else world_rect.merge(rect)
+	whole_world_visible = view.encloses(world_rect)
+	var enter := view.grow(maxf(screen_margin, 0.0))
+	var leave := enter.grow(maxf(exit_margin, 0.0))
 	var changed := false
 	var membership_changed := false
-	for cell: Vector2i in ages.keys():
-		if ages[cell] < drop_seconds:
-			ages[cell] = minf(ages[cell] + maxf(delta, 0.0), drop_seconds)
-			changed = true
-		# Finish active drops before retiring them; the wider exit band prevents flicker.
-		if ages[cell] >= drop_seconds and Vector2(cell).distance_to(center) > radius + exit_margin:
-			ages.erase(cell)
-			membership_changed = true
-	if center != last_center or radius != last_radius or initial:
-		# ponytail: scan only the reveal square; use spatial chunks if radii exceed 30 tiles.
-		var bounds := ground.get_used_rect()
-		for x in range(maxi(bounds.position.x, floori(center.x - radius)), mini(bounds.end.x, ceili(center.x + radius) + 1)):
-			for y in range(maxi(bounds.position.y, floori(center.y - radius)), mini(bounds.end.y, ceili(center.y + radius) + 1)):
-				var cell := Vector2i(x, y)
-				var distance := Vector2(cell).distance_to(center)
-				if distance > radius or ages.has(cell) or ground.get_cell_source_id(cell) == -1:
-					continue
-				# Capture heading at entry: turning never restarts an existing drop.
-				var relative := Vector2(cell) - center
-				var heading := Vector2(observer.facing)
-				var start_settled := initial and (distance <= 3.0 or relative.dot(heading) <= 0.0)
-				ages[cell] = drop_seconds if start_settled else -entry_delay(relative, heading)
+	var active_count := 0
+	for age in ages.values():
+		if age < drop_seconds:
+			active_count += 1
+	# ponytail: one scan is sufficient for this 256-tile demo; chunk for much larger maps.
+	for cell in all_cells:
+		var screen_rect := tile_screen_rect(cell)
+		if not drop_enabled or whole_world_visible:
+			if not is_landed(cell):
+				ages[cell] = drop_seconds
+				changed = true
 				membership_changed = true
-		last_center = center
-		last_radius = radius
+			continue
+		if ages.has(cell):
+			if ages[cell] < drop_seconds:
+				ages[cell] = minf(ages[cell] + maxf(delta, 0.0), drop_seconds) if is_edge_tile(screen_rect, view) else drop_seconds
+				changed = true
+			if is_landed(cell) and not leave.intersects(screen_rect):
+				ages.erase(cell)
+				membership_changed = true
+		elif enter.intersects(screen_rect):
+			var animate := not initial and active_count < max_active_drops and is_edge_tile(screen_rect, view) and tile_variation(cell) < animated_fraction
+			ages[cell] = -entry_delay(cell, screen_rect, view) if animate else drop_seconds
+			if animate:
+				active_count += 1
+			membership_changed = true
 	if membership_changed:
 		cells.assign(ages.keys())
 		cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 			return a.x + a.y < b.x + b.y if a.x + a.y != b.x + b.y else a.x < b.x)
+	# Never leave an actor standing over a falling support tile. NPC AI/visibility is unchanged.
+	settle_support(observer)
+	for resident in get_parent().residents:
+		if resident.joined:
+			settle_support(resident)
 	if changed or membership_changed:
+		queue_redraw()
+
+func settle_support(actor: Node2D) -> void:
+	var cell := Vector2i(actor.grid_position.round())
+	if ages.has(cell) and not is_landed(cell):
+		ages[cell] = drop_seconds
 		queue_redraw()
 
 func is_landed(cell: Vector2i) -> bool:
 	return ages.has(cell) and ages[cell] >= drop_seconds
 
-func entry_delay(relative: Vector2, heading: Vector2) -> float:
-	var forward := heading.normalized() if not heading.is_zero_approx() else Vector2.DOWN
-	# Broad, symmetric fan: travel direction leads; sideways spread follows gently.
-	var travel := maxf(relative.dot(forward), 0.0) + absf(relative.cross(forward)) * 0.35
-	return floorf(travel / maxf(wave_band_width, 1.0)) * wave_delay
+func is_edge_tile(screen_rect: Rect2, view: Rect2) -> bool:
+	var center := screen_rect.get_center()
+	var distance := minf(minf(absf(center.x - view.position.x), absf(center.x - view.end.x)), minf(absf(center.y - view.position.y), absf(center.y - view.end.y)))
+	return view.grow(screen_margin).intersects(screen_rect) and distance <= edge_band_pixels
+
+func tile_variation(cell: Vector2i) -> float:
+	return float(posmod(cell.x * 73856093 ^ cell.y * 19349663, 1009)) / 1009.0
+
+func entry_delay(cell: Vector2i, screen_rect: Rect2, view: Rect2) -> float:
+	# Actual viewport entry determines the batch; sweep continuously along its nearest edge.
+	# No distance bands, capped delays, or queue that can grow during rapid camera travel.
+	var center := screen_rect.get_center()
+	var horizontal_edge := minf(absf(center.y - view.position.y), absf(center.y - view.end.y))
+	var vertical_edge := minf(absf(center.x - view.position.x), absf(center.x - view.end.x))
+	var along := (center.x - view.position.x) / maxf(view.size.x, 1.0) if horizontal_edge < vertical_edge else (center.y - view.position.y) / maxf(view.size.y, 1.0)
+	# Stable coordinate hash decorrelates neighbors without changing global RNG or re-entry style.
+	var variation := tile_variation(cell)
+	return clampf(along, 0.0, 1.0) * edge_sweep_seconds + variation * tile_stagger_seconds
 
 func is_shown(cell: Vector2i) -> bool:
 	return ages.has(cell) and ages[cell] >= 0.0
@@ -112,7 +153,7 @@ func _draw() -> void:
 			draw_polyline(PackedVector2Array([top, center + Vector2(half.x, 0), bottom, center + Vector2(-half.x, 0), top]), grid_color, grid_width, true)
 
 func _draw_face(a: Vector2, b: Vector2, depth: float, color: Color) -> void:
-	if depth <= 0.0:
+	if depth < 0.01:
 		return
 	var down := Vector2(0, depth)
 	draw_colored_polygon(PackedVector2Array([a, b, b + down, a + down]), color)
