@@ -3,6 +3,7 @@ extends Node
 func _ready() -> void:
 	var village = preload("res://scenes/village.tscn").instantiate()
 	add_child(village)
+	test_world_assets(village)
 	test_npc(village)
 	test_viewport_drop(village)
 	test_occlusion(village)
@@ -34,6 +35,8 @@ func _ready() -> void:
 	clock.apply_elapsed(120.0)
 	assert(clock.phase == "DAYTIME" and clock.time_text() == "12:00" and clock.years == 2.5)
 	assert(clock.ambient.color.r > night_color.r)
+	for channel in range(3):
+		assert(clock.ambient.color[channel] + clock.sunlight.color[channel] * clock.sunlight.energy <= 1.0, "Noon preserves palette highlights without clipping")
 	clock.apply_elapsed(180.0)
 	assert(clock.phase == "NIGHT" and clock.time_text() == "18:00")
 	clock.apply_elapsed(239.999)
@@ -161,6 +164,15 @@ func _ready() -> void:
 			await RenderingServer.frame_post_draw
 			var error := get_viewport().get_texture().get_image().save_png("res://tests/" + entry[1] + "-preview.png")
 			assert(error == OK, "Screenshot saved")
+		preview_clock.apply_elapsed(120.0)
+		preview.get_node("Camera2D").tracking_enabled = false
+		preview.get_node("Camera2D").global_position = preview.ground.to_global(preview.ground.map_to_local(Vector2i(12, 12)))
+		preview.get_node("Camera2D").force_update_scroll()
+		preview.get_node("TerrainReveal").drop_enabled = false
+		preview.get_node("TerrainReveal").update_reveal(0.0)
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		assert(get_viewport().get_texture().get_image().save_png("res://tests/shoreline-preview.png") == OK)
 		var cabin = preview.get_node("Objects/Building_4_4")
 		preview.player.global_position = cabin.global_position + Vector2(0, -25)
 		preview.player.set_physics_process(false)
@@ -170,7 +182,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		assert(get_viewport().get_texture().get_image().save_png("res://tests/occlusion-preview.png") == OK)
-		print("PREVIEWS SAVED: morning, daytime, afternoon, night, day4, occlusion")
+		print("PREVIEWS SAVED: morning, daytime, afternoon, night, day4, shoreline, occlusion")
 	get_tree().quit()
 
 func test_npc(village: Node2D) -> void:
@@ -239,6 +251,55 @@ func test_npc(village: Node2D) -> void:
 	village.player.position = saved_player
 	village.update_residents(1)
 	print("NPC TEST PASS: daily arrivals, four-resident cap, preview rewind, LimboAI wandering, no vision culling")
+
+func test_world_assets(village: Node2D) -> void:
+	assert(village.terrain_atlas.get_size() == Vector2(384, 512))
+	var terrain_types = preload("res://scripts/terrain_tiles.gd")
+	var atlas: TileSetAtlasSource = village.ground.tile_set.get_source(0)
+	var pixels: Image = village.terrain_atlas.get_image()
+	var edge_samples := [Vector2i(16, 8), Vector2i(47, 8), Vector2i(47, 23), Vector2i(16, 23)]
+	assert(atlas.get_tiles_count() == 96, "Six materials with all sixteen edge combinations")
+	for kind in range(6):
+		for mask in range(16):
+			var neighbors: Array[int] = []
+			for side in range(4):
+				neighbors.append(-1 if mask & (1 << side) else kind)
+				var point: Vector2i = edge_samples[side] + Vector2i(kind * 64, 0)
+				var expected: Color = terrain_types.edge_color(kind, 0.75) if mask & (1 << side) else pixels.get_pixelv(point)
+				assert(pixels.get_pixelv(point + Vector2i(0, mask * 32)).is_equal_approx(expected), "Baked edge pixels match isometric direction, unselected edges preserve the base")
+			assert(terrain_types.edge_mask(kind, neighbors) == mask, "Single edges, corners, channels and isolated tiles")
+	assert(terrain_types.edge_mask(2, [4, 2, 5, 0]) == 9, "Water draws depth transitions only on the deeper side")
+	assert(village.ground.get_cell_atlas_coords(Vector2i(7, 0)).x == terrain_types.Kind.DIRT)
+	assert(village.ground.get_cell_atlas_coords(Vector2i(8, 7)).x == terrain_types.Kind.STONE)
+	for entry in [[Vector2i(12, 12), 4], [Vector2i(13, 13), 2], [Vector2i(14, 14), 5], [Vector2i(15, 15), 5]]:
+		assert(village.ground.get_cell_atlas_coords(entry[0]).x == entry[1], "Depth increases away from land, including open map boundary")
+		assert(not village.is_walkable(entry[0]), "Every water depth blocks navigation")
+	for cell in village.ground.get_used_cells():
+		var coordinates: Vector2i = village.ground.get_cell_atlas_coords(cell)
+		var neighbors: Array[int] = []
+		for direction in terrain_types.DIRECTIONS:
+			neighbors.append(village.ground.get_cell_atlas_coords(cell + direction).x)
+		assert(coordinates.y == terrain_types.edge_mask(coordinates.x, neighbors), "Applied edge variant agrees with all four neighbors")
+	var saved_rows: Array = village.layout.terrain_rows.duplicate()
+	village.layout.terrain_rows[0] = "SDRWGGGGGGGGGGGG"
+	assert(village.resolved_terrain(Vector2i(0, 0)) == terrain_types.Kind.SHALLOW)
+	assert(village.resolved_terrain(Vector2i(1, 0)) == terrain_types.Kind.DEEP)
+	assert(village.resolved_terrain(Vector2i(2, 0)) == terrain_types.Kind.DIRT)
+	assert(village.resolved_terrain(Vector2i(3, 0)) == terrain_types.Kind.SHALLOW, "Narrow water stays shallow")
+	village.layout.terrain_rows = saved_rows
+	assert(village.make_placeholder_atlas().get_size() == Vector2(384, 512), "Fallback supports the same atlas contract")
+	assert(village.terrain_normal_atlas != null)
+	for entry in village.layout.props:
+		var cell := Vector2i(entry.cell[0], entry.cell[1])
+		var prop = village.get_node("Objects/Prop_%s_%d_%d" % [entry.kind, cell.x, cell.y])
+		assert(prop.position == village.ground.to_global(village.ground.map_to_local(cell)))
+		assert(village.is_walkable(cell) == (entry.kind == "flowers"))
+		assert(prop.sprite.texture != null)
+	for cell in [Vector2i(4, 5), Vector2i(10, 6), Vector2i(4, 12), Vector2i(10, 11)]:
+		assert(not village.astar.get_id_path(village.player.current_cell, cell).is_empty(), "Every facility entrance is reachable")
+	var terrain = village.get_node("TerrainReveal")
+	assert(terrain.atlas.texture is CanvasTexture, "Drop renderer uses the applied asset and normal atlas")
+	print("ASSET STAGE B PASS: real atlas, grid-aligned props, solid tree/rock, walkable flowers, connected entrances")
 
 func test_occlusion(village: Node2D) -> void:
 	var building = village.get_node("Objects/Building_4_4")

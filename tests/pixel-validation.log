@@ -1,0 +1,16 @@
+Godot Engine v4.7.1.stable.official.a13da4feb - https://godotengine.org
+OpenGL API 3.3.0 Core Profile Context 22.20.44.17.221214 - Compatibility - Using Device: ATI Technologies Inc. - AMD Radeon (TM) Graphics
+
+ERROR: Failed to read the root certificate store.
+   at: get_system_ca_certificates (platform/windows/os_windows.cpp:2582)
+[MCP Runtime] Server listening on port 7777
+[MCP Runtime] Autoload ready, server starting on port 7777
+ASSET STAGE B PASS: real atlas, grid-aligned props, solid tree/rock, walkable flowers, connected entrances
+NPC TEST PASS: daily arrivals, four-resident cap, preview rewind, LimboAI wandering, no vision culling
+VIEWPORT DROP TEST PASS: camera entry, scale, no restart, smooth fall, re-entry, toggle, whole-world zoom-out, navigation
+OCCLUSION TEST PASS: behind/front/side and smooth fade/restoration
+SOLAR TEST PASS: east/zenith/west/nadir, spherical SLERP, uniform angular speed, light vector mapping, no night sunlight
+DEBUG TEST PASS: clock preview/pause/speed and smooth camera tracking
+CLOCK TEST PASS: 240 seconds/day, 5 years/day, phase boundaries, midnight, system ticks, building normal maps
+BASELINE TEST PASS: projection, expanded map, 8 directions, obstacles, corner blocking, retarget, arrival, unreachable target, left/right mouse input
+PREVIEWS SAVED: morning, daytime, afternoon, night, day4, occlusion

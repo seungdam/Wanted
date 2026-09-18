@@ -48,9 +48,10 @@ func apply_elapsed(seconds: float) -> void:
 	var daylight := smoothstep(5.0, 8.0, hour) * (1.0 - smoothstep(17.0, 20.0, hour))
 	sun_direction = solar_direction(hour)
 	var elevation := maxf(sun_direction.z, 0.0)
-	ambient.color = Color("566888").lerp(Color("b9c2c9"), daylight)
+	ambient.color = Color("566888").lerp(Color("c9c5b5"), daylight)
 	sunlight.color = Color("ffce8d").lerp(Color("fff3da"), elevation)
-	sunlight.energy = 0.65 * smoothstep(0.0, 0.25, elevation)
+	# Keep ambient + direct light below white so the asset palette does not clip.
+	sunlight.energy = 0.18 * smoothstep(0.0, 0.25, elevation)
 	var horizontal := Vector2(sun_direction.x, sun_direction.y)
 	# Godot normalizes mix(horizontal_unit, Z, height); invert that blend
 	# to preserve the actual SLERP vector, rather than treating height as an angle.

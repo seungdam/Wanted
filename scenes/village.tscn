@@ -6,10 +6,14 @@
 [ext_resource type="Script" uid="uid://dahqh80oxuhxx" path="res://scripts/time_bar.gd" id="4"]
 [ext_resource type="Script" uid="uid://c00wuy0aessky" path="res://scripts/follow_camera.gd" id="5"]
 [ext_resource type="Script" uid="uid://n488f8kmu5yn" path="res://scripts/terrain_reveal.gd" id="6"]
+[ext_resource type="Texture2D" uid="uid://c0oi18umtnt3h" path="res://assets/world/ready/terrain.png" id="7"]
+[ext_resource type="Texture2D" uid="uid://n8x2tnn1g3jm" path="res://assets/world/ready/terrain-normal.png" id="8"]
 
 [node name="Village" type="Node2D" unique_id=154888197]
 texture_filter = 1
 script = ExtResource("1")
+terrain_atlas = ExtResource("7")
+terrain_normal_atlas = ExtResource("8")
 
 [node name="Ground" type="TileMapLayer" parent="." unique_id=1839336074]
 

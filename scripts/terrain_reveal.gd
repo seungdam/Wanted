@@ -1,4 +1,5 @@
 extends Node2D
+const Terrain = preload("res://scripts/terrain_tiles.gd")
 ## Visual-only blocks. Ground remains the authoritative tile map for movement.
 @export var drop_enabled := true
 @export_range(16.0, 200.0, 8.0) var edge_band_pixels := 80.0
@@ -140,8 +141,12 @@ func _draw() -> void:
 			continue
 		var center := ground.map_to_local(cell) + Vector2(0, drop_offset(cell))
 		var bottom := center + Vector2(0, half.y)
-		_draw_face(center + Vector2(-half.x, 0), bottom, exposed_depth(cell, cell + Vector2i.DOWN), left_soil)
-		_draw_face(bottom, center + Vector2(half.x, 0), exposed_depth(cell, cell + Vector2i.RIGHT), right_soil)
+		var kind := ground.get_cell_atlas_coords(cell).x
+		var water := Terrain.water_depth(kind) > 0
+		var left: Color = Terrain.BASE[kind].darkened(0.15) if water else left_soil
+		var right: Color = Terrain.BASE[kind].darkened(0.3) if water else right_soil
+		_draw_face(center + Vector2(-half.x, 0), bottom, exposed_depth(cell, cell + Vector2i.DOWN), left)
+		_draw_face(bottom, center + Vector2(half.x, 0), exposed_depth(cell, cell + Vector2i.RIGHT), right)
 		if not flat_colors.is_empty():
 			# Exact shared edges avoid transparent atlas seams when enlarging placeholder tiles.
 			draw_colored_polygon(PackedVector2Array([center + Vector2(0, -half.y), center + Vector2(half.x, 0), bottom, center + Vector2(-half.x, 0)]), flat_colors[ground.get_cell_atlas_coords(cell).x])
