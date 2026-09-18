@@ -2,7 +2,7 @@ extends Control
 ## Cream paper / wood frame HUD. World lighting never changes its readability.
 @export var clock_path: NodePath
 @onready var clock = get_node(clock_path)
-var font: Font = ThemeDB.fallback_font
+var font: Font = preload("res://font/Moneygraphy-Pixel.ttf")
 var panel := StyleBoxFlat.new()
 const INK := Color("584532")
 const MUTED := Color("887153")
