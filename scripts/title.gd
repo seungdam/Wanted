@@ -1,9 +1,8 @@
 extends Control
 signal onboarding_completed(profile: Dictionary)
-const Onboarding = preload("res://scripts/auth/onboarding.gd")
-const GoogleLogin = preload("res://scripts/auth/google_login.gd")
+const Onboarding = preload("res://scripts/onboarding.gd")
 var progress = Onboarding.new()
-var auth = GoogleLogin.new()
+var script_sheet = DialogScriptManager
 var content: VBoxContainer
 var card: PanelContainer
 var notice: Label
@@ -19,9 +18,8 @@ var fade: ColorRect
 const FADE_SECONDS := 0.25
 
 func _ready() -> void:
-	add_child(auth)
-	auth.authenticated.connect(_google_authenticated)
-	auth.failed.connect(_auth_failed)
+	if not script_sheet.load_file():
+		push_error("Could not load data/scenarios.xlsx")
 	_make_theme()
 	var background := TextureRect.new()
 	background.texture = preload("res://assets/ui/title_background.jpg")
@@ -168,6 +166,8 @@ func _show() -> void:
 		target = Onboarding.Stage.NICKNAME
 	if displayed_screen == target:
 		_render()
+		if scenario.visible:
+			scenario.popup()
 		return
 	transitioning = true
 	scenario.input_locked = true
@@ -214,38 +214,31 @@ func _render() -> void:
 	notice.add_theme_color_override("font_color", Color("8b502d"))
 	match progress.stage:
 		Onboarding.Stage.TITLE:
-			_button("GoogleLogin", "Google로 로그인", _start_google, auth.busy or not auth.configuration_error().is_empty())
-			_button("TestLogin", "마을 이야기 시작 · 체험하기", _start_test, auth.busy)
-			if auth.busy:
-				_label("브라우저에서 로그인을 마치면 이 화면으로 돌아옵니다.")
-				_button("CancelLogin", "로그인 취소", _cancel_login)
-			else:
-				if not auth.configuration_error().is_empty():
-					_label("Google 연결 준비 중 · 테스트 입장 가능", 13)
-			_label("DEMO · 종료 시 진행 초기화", 13)
+			_button("StartGuest", "마을 이야기 시작", _start_guest)
+			_label("DEMO · 게스트 진행은 종료 시 초기화", 13)
 		Onboarding.Stage.WALLET:
 			_label("교육용 가상 지갑 · 실제 계정이나 자산과 무관합니다.", 15)
-			_label("리벳: 먼저 네 지갑. 위의 주소는 남에게 알려줘도 돼. 아래 개인키는 나한테도 알려주면 안 돼.")
+			_label(script_sheet.lines("wallet.intro").front())
 			_label("주소   " + progress.address, 21)
 			var key: String = progress.private_key if progress.key_seen and not progress.key_confirmed else progress.private_key.left(4) + " ················ " + progress.private_key.right(4)
 			_label("가상 개인키   " + key, 18)
 			if not progress.key_confirmed:
 				_button("RevealKey", "가상 개인키 보기", func(): progress.reveal_key(); _show())
-				_button("ConfirmKey", "개인키 확인했어", _confirm_key, not progress.key_seen)
+				_button("ConfirmKey", script_sheet.lines("wallet.key_reply").front(), _confirm_key, not progress.key_seen)
 			else:
 				_label("개인키 확인 완료 ✓", 16)
-				_label("리벳: 가상 백업 구절 세 단어야. 잃어버린 지갑을 되찾는 연습에 쓸 거야. 이것도 비밀이야.")
-				_label("이 세 단어는 튜토리얼 전용이며 Google 계정을 복구하지 않습니다.", 14)
+				_label(script_sheet.lines("wallet.backup").front())
+				_label("이 세 단어는 튜토리얼 전용이며 게스트 진행을 복구하지 않습니다.", 14)
 				if progress.backup_seen:
 					_label(" · ".join(progress.backup_words), 26)
 				else:
 					_button("RevealBackup", "가상 백업 구절 보기", func(): progress.reveal_backup(); _show())
-				_button("ConfirmBackup", "외웠어", _confirm_backup, not progress.backup_seen)
+				_button("ConfirmBackup", script_sheet.lines("wallet.backup_reply").front(), _confirm_backup, not progress.backup_seen)
 		Onboarding.Stage.COMPLETE:
-			_label("%s, 이제 첫 거래를 배울 준비가 됐어." % progress.nickname, 23)
+			_label(script_sheet.lines("wallet.complete", {"nickname": progress.nickname}).front(), 23)
 			_label("개인키 확인 ✓     백업 구절 확인 ✓")
-			_label("거래 시스템은 다음 단계입니다. 현재 씬에서는 지갑 안내 완료까지 검증합니다.")
 			_label("가상 지갑 주소   " + progress.address)
+			_button("EnterVillage", "마을로 들어가기", _enter_village)
 	if progress.stage != Onboarding.Stage.TITLE:
 		_button("Reset", "타이틀로 · 임시 진행 초기화", _reset)
 	_focus_current.call_deferred()
@@ -260,33 +253,11 @@ func _focus_current() -> void:
 			child.grab_focus()
 			break
 
-func _start_google() -> void:
+func _start_guest() -> void:
 	if transitioning:
 		return
-	auth.begin()
-	if auth.busy:
+	if progress.begin_guest():
 		_show()
-
-func _start_test() -> void:
-	if auth.busy or transitioning:
-		return
-	if progress.authenticate("local-test", "test"):
-		_show()
-
-func _google_authenticated(id: String) -> void:
-	if progress.authenticate(id, "google"):
-		_show()
-
-func _auth_failed(message: String) -> void:
-	_show()
-	notice.text = message
-	notice.show()
-
-func _cancel_login() -> void:
-	auth.cancel()
-	_show()
-	notice.text = "로그인을 취소했습니다. 다시 시작할 수 있습니다."
-	notice.show()
 
 func _story_nickname(value: String) -> void:
 	if transitioning:
@@ -311,10 +282,20 @@ func _confirm_backup() -> void:
 		_show()
 		onboarding_completed.emit(progress.public_summary())
 
+func _enter_village() -> void:
+	if transitioning or progress.stage != Onboarding.Stage.COMPLETE:
+		return
+	GuestSession.begin(progress.nickname, progress.address)
+	transitioning = true
+	fade.show()
+	var tween := create_tween()
+	tween.tween_property(fade, "color:a", 1.0, FADE_SECONDS)
+	await tween.finished
+	get_tree().change_scene_to_file("res://scenes/village.tscn")
+
 func _reset() -> void:
 	if transitioning:
 		return
 	scenario.stop()
-	auth.cancel()
 	progress = Onboarding.new()
 	_show()

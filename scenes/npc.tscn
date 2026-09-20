@@ -1,18 +1,31 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://ds62c0dxcd4ix"]
 
-[ext_resource type="Script" path="res://scripts/npc.gd" id="1"]
-[ext_resource type="BehaviorTree" path="res://ai/trees/npc_wander.tres" id="2"]
+[ext_resource type="Script" uid="uid://blmt7e2rxnhea" path="res://scripts/npc.gd" id="1"]
+[ext_resource type="BehaviorTree" uid="uid://bu2afpfmvw30k" path="res://ai/trees/npc_wander.tres" id="2"]
+[ext_resource type="Texture2D" uid="uid://cprk3miy5fxbn" path="res://assets/character/size_128x128/cat_pin_walk_128.png" id="2_rv78h"]
+[sub_resource type="BlackboardPlan" id="BlackboardPlan_7n8xq"]
 
-[node name="NPC" type="Node2D"]
-scale = Vector2(2, 2)
+[node name="NPC" type="Node2D" unique_id=2138510285]
+scale = Vector2(0.25, 0.25)
 script = ExtResource("1")
 speed = 1.0
 body_color = Color(0.91, 0.57, 0.35, 1)
 selection_ring = false
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
-position = Vector2(0, -20)
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1432637488]
+position = Vector2(0.5, 0)
+texture = ExtResource("2_rv78h")
+offset = Vector2(3.5, 0)
+hframes = 4
+vframes = 8
+frame = 8
 
-[node name="BTPlayer" type="BTPlayer" parent="."]
+[node name="BTPlayer" type="BTPlayer" parent="." unique_id=824295240]
 behavior_tree = ExtResource("2")
 update_mode = 2
+blackboard_plan = SubResource("BlackboardPlan_7n8xq")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=238138476]
+
+[node name="AnimationTree" type="AnimationTree" parent="." unique_id=1702861822]
+root_node = NodePath("../AnimationPlayer")

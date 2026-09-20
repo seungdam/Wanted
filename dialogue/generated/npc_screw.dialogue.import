@@ -1,0 +1,16 @@
+[remap]
+
+importer="dialogue_manager"
+importer_version=18
+type="Resource"
+uid="uid://dgntmku7skr1u"
+path="res://.godot/imported/npc_screw.dialogue-22216bb0ff7f0bbbe61296470d7d86c4.tres"
+
+[deps]
+
+source_file="res://dialogue/generated/npc_screw.dialogue"
+dest_files=["res://.godot/imported/npc_screw.dialogue-22216bb0ff7f0bbbe61296470d7d86c4.tres"]
+
+[params]
+
+defaults=true

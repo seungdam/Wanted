@@ -3,16 +3,9 @@ signal nickname_submitted(value: String)
 signal finished
 signal cancelled
 
-const LINES := [
-	"왔구나, %s. 이 집, 네 거야.",
-	"좀 낡았지만 고치면 돼.",
-	"그리고 저기 돌무더기 보이지? 저게 성벽이 될 자리야.",
-	"마을에서 거래가 하나 성사될 때마다 블록이 하나 올라가.",
-	"집도 고치고 성벽도 쌓으려면 이 마을 경제를 알아야 해.",
-	"내가 하나씩 알려줄게. 따라와."
-]
 var line_index := 0
 var lines: Array[String] = []
+var script_sheet = DialogScriptManager
 var typing: Tween
 var dialogue: RichTextLabel
 var next_button: Button
@@ -33,6 +26,8 @@ func _ready() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
+	if not script_sheet.load_file():
+		push_error("Could not load data/scenarios.xlsx")
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for edge in ["left", "right", "top", "bottom"]:
@@ -73,7 +68,7 @@ func _ready() -> void:
 	body.add_theme_constant_override("separation", 12)
 	bubble.add_child(body)
 	speaker = Label.new()
-	speaker.text = "리벳"
+	speaker.text = script_sheet.lines("arrival.speaker").front()
 	speaker.add_theme_color_override("font_color", Color("527a35"))
 	speaker.add_theme_font_size_override("font_size", 22)
 	body.add_child(speaker)
@@ -124,17 +119,20 @@ func present(progress) -> void:
 	next_button.visible = not naming
 	if naming:
 		name_input.text = ""
-		dialogue.text = "마을에 온 걸 환영해! 너를 어떻게 부르면 좋을까?"
+		dialogue.text = script_sheet.lines("arrival.nickname").front()
 		dialogue.visible_characters = -1
 		page.text = "새로운 이웃"
 		name_input.grab_focus()
 	else:
-		lines.assign(LINES)
-		lines[0] = lines[0] % progress.nickname
-		line_index = 0
-		_show_line()
+		if script_sheet.has_dialogue_resource("arrival"):
+			_load_compiled_arrival(progress.nickname)
+		else:
+			lines = script_sheet.lines("arrival.intro", {"nickname": progress.nickname})
+			line_index = 0
+			_show_line()
 		next_button.grab_focus()
-	popup()
+	bubble.scale = Vector2(0.96, 0.96)
+	bubble.modulate.a = 0.0
 
 func popup() -> void:
 	if popup_tween:
@@ -152,8 +150,24 @@ func _submit_name() -> void:
 	nickname_submitted.emit(name_input.text)
 
 func show_name_error() -> void:
-	dialogue.text = "이름은 공백을 제외하고 2~12자로 입력해 줘."
+	dialogue.text = script_sheet.lines("arrival.nickname_error").front()
 	dialogue.visible_characters = -1
+
+func _load_compiled_arrival(nickname: String) -> void:
+	var resource = script_sheet.dialogue_resource("arrival")
+	var states := [{"nickname": nickname}]
+	var compiled: Array[String] = []
+	var dialogue_manager = Engine.get_singleton("DialogueManager")
+	var line = await dialogue_manager.get_next_dialogue_line(resource, "start", states)
+	while line != null:
+		if not line.text.is_empty():
+			compiled.append(line.text)
+		line = await dialogue_manager.get_next_dialogue_line(resource, line.next_id, states)
+	if compiled.is_empty():
+		compiled = script_sheet.lines("arrival.intro", {"nickname": nickname})
+	lines = compiled
+	line_index = 0
+	_show_line()
 
 func _show_line() -> void:
 	dialogue.text = lines[line_index]

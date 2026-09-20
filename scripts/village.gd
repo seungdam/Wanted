@@ -1,110 +1,99 @@
 extends Node2D
 
-const Building = preload("res://scripts/building.gd")
-const Terrain = preload("res://scripts/terrain_tiles.gd")
 const NPC = preload("res://scenes/npc.tscn")
+const TradeDialogue = preload("res://scenes/ui/npc_trade_dialogue.tscn")
+const LifeCoreScript = preload("res://scripts/life_core.gd")
+const ResourceNode = preload("res://scripts/resource_node.gd")
+const MarketCoreScript = preload("res://scripts/market_core.gd")
+const EventDirectorScript = preload("res://scripts/event_director.gd")
+const MockEventAIScript = preload("res://scripts/mock_event_ai.gd")
 const NPC_SPAWNS: Array[Vector2i] = [Vector2i(3, 8), Vector2i(5, 9), Vector2i(6, 8), Vector2i(8, 8), Vector2i(11, 5), Vector2i(9, 12)]
-@export_group("Map - restart to apply")
-@export var map_size := Vector2i(16, 16)
+
 @export_group("NPC Spawn - restart to apply")
 @export_range(1, 4) var npc_count := 4
 @export var resident_join_days: Array[int] = [1, 2, 3, 4]
-const RESIDENT_COLORS: Array[Color] = [Color("60834d"), Color("bb7858"), Color("6e91a0"), Color("c3a151")]
-var residents: Array[Node2D] = []
-@export_range(0.1, 10.0) var npc_speed := 1.0
-@export_group("Assets")
-const TILE_SIZE := Vector2i(128, 64)
-const ATLAS_TILE_SIZE := Vector2i(64, 32)
-const TERRAIN_COLORS = Terrain.BASE
-const BLOCKS: Array[Vector2i] = [Vector2i(4, 4), Vector2i(10, 5), Vector2i(10, 10), Vector2i(4, 11)]
+@export_group("Resident Trade Tuning - restart to apply")
+@export var resident_trade_seeds: Array[int] = [1909, 2729, 4093, 5711]
+@export_range(0, 5) var trade_affection := 1
+@export_range(0, 5) var gift_affection := 3
+@export_range(0, 5) var quest_affection := 4
+@export_range(1, 4) var max_paid_trades_per_day := 2
+@export_range(1, 5) var disliked_gift_affection_loss := 3
+@export_range(0, 10) var disliked_gift_price_penalty := 2
+@export_range(1, 3) var disliked_gift_penalty_days := 1
 
-@export var terrain_atlas: Texture2D # Six material columns x 16 edge-mask rows, each 64x32.
-@export var terrain_normal_atlas: Texture2D
-@export var building_texture: Texture2D
-@export var building_normal_texture: Texture2D
-@export_file("*.json") var layout_path := "res://data/village_layout.json"
-var layout: Dictionary = {}
-const PROP_TEXTURES := {
-	"tree": preload("res://assets/world/ready/tree.png"),
-	"rocks": preload("res://assets/world/ready/rocks.png"),
-	"flowers": preload("res://assets/world/ready/flowers.png")
-}
-const PROP_FEET := {"tree": Vector2(32, 68), "rocks": Vector2(24, 30), "flowers": Vector2(20, 22)}
+const INTERACTION_DISTANCE := 42.0
+const TRADE_NOTICE_DISTANCE := 240.0
+var residents: Array[Node2D] = []
+@export_range(0.1, 10.0) var npc_speed := 0.6
+@export_node_path("TileMapLayer") var npc_action_area_path: NodePath = NodePath("Ground")
+var interaction_target: Node2D
+var interaction_open := false
+var ring_menu: RingMenu
+var resident_day := -1
 var astar := AStarGrid2D.new()
+var life := LifeCoreScript.new()
+var market := MarketCoreScript.new()
+var event_director := EventDirectorScript.new(market)
+var mock_event_ai := MockEventAIScript.new()
+var event_day := -1
+var resource_target: Node2D
+var interaction_panel: PanelContainer
+var interaction_label: Label
+var interaction_panel_state := false
+
 @onready var ground: TileMapLayer = $Ground
+@onready var npc_action_area: TileMapLayer = get_node_or_null(npc_action_area_path) as TileMapLayer
 @onready var player = $Objects/Player
-@onready var route_line: Line2D = $Route
 @onready var status: Label = $HUD/Status
 
 func _ready() -> void:
-	map_size = map_size.clamp(Vector2i(16, 16), Vector2i(128, 128))
-	layout = JSON.parse_string(FileAccess.get_file_as_string(layout_path))
-	assert(layout.has("terrain_rows") and layout.has("props"), "Invalid village layout")
-	build_ground()
 	build_navigation()
-	spawn_buildings()
-	spawn_props()
+	if not is_walkable(player.current_cell):
+		player.current_cell = _first_walkable_cell()
+		player.grid_position = Vector2(player.current_cell)
 	player.ground = ground
 	player.advance(0.0)
-	player.arrived.connect(_on_arrived)
 	spawn_npcs()
+	_spawn_resources()
+	market.load_data()
 	update_residents($WorldClock.day)
 	$Camera2D._process(0.0)
 	$Camera2D.force_update_scroll()
-	$TerrainReveal.setup(ground, player)
+	$HUD/Instructions.text = "WASD 이동  /  1~5 도구  /  SPACE 상호작용  /  R 방  /  B 상점"
+	$HUD/Status.text = "리벳에게 말을 걸어 첫 거래를 배워 보세요."
+	_setup_currency()
+	_setup_interaction_panel()
+	var fade := $HUD/ArrivalFade
+	var tween := create_tween()
+	tween.tween_property(fade, "color:a", 0.0, 0.25)
+	tween.tween_callback(fade.queue_free)
 
 func build_navigation() -> void:
-	astar.region = Rect2i(Vector2i.ZERO, map_size)
+	var painted_cells := ground.get_used_cells()
+	assert(not painted_cells.is_empty(), "Paint walkable cells on Ground in the editor before running Village.")
+	astar.region = ground.get_used_rect().grow(1)
 	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.update()
-	for cell in ground.get_used_cells():
-		if Terrain.water_depth(ground.get_cell_atlas_coords(cell).x) > 0:
-			astar.set_point_solid(cell)
-	for cell in BLOCKS:
-		astar.set_point_solid(cell)
-	for entry in layout.props:
-		if entry.kind != "flowers":
-			astar.set_point_solid(Vector2i(entry.cell[0], entry.cell[1]))
-
-func spawn_props() -> void:
-	for entry in layout.props:
-		var cell := Vector2i(entry.cell[0], entry.cell[1])
-		var prop := Building.new()
-		prop.name = "Prop_%s_%d_%d" % [entry.kind, cell.x, cell.y]
-		prop.set_meta("ground_cell", cell)
-		prop.texture = PROP_TEXTURES[entry.kind]
-		prop.sprite_offset = prop.texture.get_size() * 0.5 - PROP_FEET[entry.kind]
-		prop.position = ground.to_global(ground.map_to_local(cell))
-		prop.scale = ground.scale
-		prop.observer = player
-		$Objects.add_child(prop)
-
-func spawn_buildings() -> void:
-	for cell in BLOCKS:
-		var building := Building.new()
-		building.name = "Building_%d_%d" % [cell.x, cell.y]
-		building.set_meta("ground_cell", cell)
-		building.texture = building_texture
-		building.normal_texture = building_normal_texture
-		building.position = ground.to_global(ground.map_to_local(cell)) + Vector2(0, 24)
-		building.scale = Vector2(2, 2)
-		building.height = 44.0
-		building.observer = player
-		$Objects.add_child(building)
+	for x in range(astar.region.position.x, astar.region.end.x):
+		for y in range(astar.region.position.y, astar.region.end.y):
+			astar.set_point_solid(Vector2i(x, y), true)
+	for cell in painted_cells:
+		astar.set_point_solid(cell, false)
 
 func spawn_npcs() -> void:
-	var destinations: Array[Vector2i] = []
-	for cell in ground.get_used_cells():
-		if is_walkable(cell):
-			destinations.append(cell)
+	var action_area := npc_action_area if npc_action_area != null else ground
+	var destinations: Array[Vector2i] = action_area.get_used_cells()
 	var spawn_cells: Array[Vector2i] = NPC_SPAWNS.duplicate()
 	for cell in destinations:
 		if not spawn_cells.has(cell) and cell != player.current_cell:
 			spawn_cells.append(cell)
 	for index in range(mini(clampi(npc_count, 1, 4), spawn_cells.size())):
 		var cell := spawn_cells[index]
+		if not is_walkable(cell):
+			continue
 		var npc = NPC.instantiate()
 		npc.speed = npc_speed
 		npc.name = "NPC_%d_%d" % [cell.x, cell.y]
@@ -112,124 +101,310 @@ func spawn_npcs() -> void:
 		npc.grid_position = Vector2(cell)
 		npc.ground = ground
 		npc.navigation = astar
-		npc.body_color = RESIDENT_COLORS[index]
 		npc.join_day = clampi(resident_join_days[index], 1, 5) if index < resident_join_days.size() else index + 1
+		var resident_seed := resident_trade_seeds[index] if index < resident_trade_seeds.size() else 1000 + index
+		npc.configure_trade(index, resident_seed, $WorldClock.day, {
+			"trade": trade_affection,
+			"gift": gift_affection,
+			"quest": quest_affection,
+			"max_paid_trades": max_paid_trades_per_day,
+			"disliked_gift_loss": disliked_gift_affection_loss,
+			"disliked_gift_price_penalty": disliked_gift_price_penalty,
+			"disliked_gift_penalty_days": disliked_gift_penalty_days
+		})
+		npc.name = "NPC_%s" % npc.resident_id
 		npc.destinations = destinations
 		$Objects.add_child(npc)
 		npc.advance(0.0)
 		residents.append(npc)
 
-func build_ground() -> void:
-	var tiles := TileSet.new()
-	tiles.tile_size = ATLAS_TILE_SIZE
-	ground.scale = Vector2(TILE_SIZE) / Vector2(ATLAS_TILE_SIZE)
-	tiles.tile_shape = TileSet.TILE_SHAPE_ISOMETRIC
-	tiles.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_DOWN
-	var atlas := TileSetAtlasSource.new()
-	atlas.texture = terrain_atlas if terrain_atlas != null else make_placeholder_atlas()
-	if terrain_normal_atlas != null:
-		var canvas := CanvasTexture.new()
-		canvas.diffuse_texture = atlas.texture
-		canvas.normal_texture = terrain_normal_atlas
-		atlas.texture = canvas
-	atlas.texture_region_size = ATLAS_TILE_SIZE
-	for index in range(Terrain.CODES.length()):
-		for mask in range(16):
-			atlas.create_tile(Vector2i(index, mask))
-	tiles.add_source(atlas, 0)
-	ground.tile_set = tiles
-	for x in range(map_size.x):
-		for y in range(map_size.y):
-			var cell := Vector2i(x, y)
-			ground.set_cell(cell, 0, Vector2i(resolved_terrain(cell), 0))
-	for cell in ground.get_used_cells():
-		var kind := ground.get_cell_atlas_coords(cell).x
-		var neighbors: Array[int] = []
-		for direction in Terrain.DIRECTIONS:
-			neighbors.append(ground.get_cell_atlas_coords(cell + direction).x)
-		ground.set_cell(cell, 0, Vector2i(kind, Terrain.edge_mask(kind, neighbors)))
-
-func terrain_kind(cell: Vector2i) -> int:
-	if cell.x < 0 or cell.y < 0 or cell.x >= map_size.x or cell.y >= map_size.y:
-		return -1
-	if cell.y >= layout.terrain_rows.size() or cell.x >= layout.terrain_rows[cell.y].length():
-		return Terrain.Kind.GRASS
-	var kind := Terrain.CODES.find(layout.terrain_rows[cell.y][cell.x])
-	assert(kind >= 0, "Unknown terrain code")
-	return kind
-
-func resolved_terrain(cell: Vector2i) -> int:
-	var kind := terrain_kind(cell)
-	if kind != Terrain.Kind.WATER:
-		return kind
-	# W is automatic depth; explicit S/D stay authored. The map boundary is open water.
-	var shore_distance := 3
-	for dx in range(-2, 3):
-		for dy in range(-2, 3):
-			var distance := absi(dx) + absi(dy)
-			if distance == 0 or distance > 2:
-				continue
-			var neighbor := terrain_kind(cell + Vector2i(dx, dy))
-			if neighbor >= 0 and Terrain.water_depth(neighbor) == 0:
-				shore_distance = mini(shore_distance, distance)
-	return [Terrain.Kind.SHALLOW, Terrain.Kind.WATER, Terrain.Kind.DEEP][shore_distance - 1]
-
-func make_placeholder_atlas() -> Texture2D:
-	# Native Image drawing: no external artwork or image-generation dependency.
-	var image := Image.create(384, 32, false, Image.FORMAT_RGBA8)
-	for index in range(Terrain.CODES.length()):
-		for x in range(64):
-			for y in range(32):
-				var edge := absf((x + 0.5 - 32.0) / 32.0) + absf((y + 0.5 - 16.0) / 16.0)
-				if edge <= 1.0:
-					var color: Color = TERRAIN_COLORS[index]
-					var noise := posmod(x * 37 + y * 17 + index * 13, 97)
-					if noise < 7:
-						color = color.lightened(0.08)
-					elif noise > 90:
-						color = color.darkened(0.06)
-					if Terrain.water_depth(index) > 0 and y % 7 == 0 and x % 13 < 5:
-						color = Color("b3d8cb")
-					image.set_pixel(index * 64 + x, y, color)
-	return ImageTexture.create_from_image(Terrain.make_variants(image))
-
 func is_walkable(cell: Vector2i) -> bool:
 	return astar.is_in_boundsv(cell) and not astar.is_point_solid(cell)
 
-func request_move(cell: Vector2i) -> bool:
-	if not is_walkable(cell):
-		status.text = "Blocked tile or outside village. Choose open ground."
-		return false
-	var origin: Vector2i = player.path_origin()
-	var path := astar.get_id_path(origin, cell)
-	if path.is_empty():
-		status.text = "No reachable route."
-		return false
-	player.follow_path(path)
-	status.text = "Moving to (%d, %d) / 8-direction A*" % [cell.x, cell.y]
-	return true
+func _first_walkable_cell() -> Vector2i:
+	for cell in ground.get_used_cells():
+		for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			if is_walkable(cell + direction):
+				return cell
+	return ground.get_used_cells().front()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
-		var local_click: Vector2 = ground.get_global_transform_with_canvas().affine_inverse() * event.position
-		request_move(ground.local_to_map(local_click))
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_R and not interaction_open:
+			get_tree().change_scene_to_file("res://scenes/room.tscn")
+			return
+		if event.keycode == KEY_B and not interaction_open:
+			get_tree().change_scene_to_file("res://scenes/shop.tscn")
+			return
+		var tools := {KEY_1: "hand", KEY_2: "axe", KEY_3: "pickaxe", KEY_4: "rod", KEY_5: "net"}
+		if tools.has(event.keycode):
+			life.equip(tools[event.keycode])
+			status.text = "도구 선택: %s" % tools[event.keycode]
+			return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I:
+		_toggle_ring_menu()
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE and not interaction_open:
+		if resource_target != null:
+			var result: Dictionary = resource_target.harvest()
+			status.text = str(result.get("reason", "채집 완료")) if not result.get("ok", false) else "채집 완료 · %s" % result.entry.get("item", "자원")
+		elif interaction_target != null:
+			_begin_interaction()
 		get_viewport().set_input_as_handled()
 
+func _physics_process(delta: float) -> void:
+	if _movement_locked():
+		return
+	var raw_direction := Vector2(
+		float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)),
+		float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W))
+	)
+	var direction := _input_to_grid(raw_direction)
+	move_player(direction, raw_direction, delta)
+
+func move_player(direction: Vector2, visual_direction: Vector2, delta: float) -> bool:
+	if direction.is_zero_approx() or _movement_locked():
+		return false
+	# Callers pass a unit vector; clamp again so no future caller can make
+	# diagonal input faster than cardinal input.
+	var normalized := direction.normalized() if direction.length_squared() > 1.0 else direction
+	var next_grid: Vector2 = player.grid_position + player.motion_delta(normalized, delta)
+	var destination := Vector2i(roundi(next_grid.x), roundi(next_grid.y))
+	if not is_walkable(destination):
+		return false
+	if normalized.x != 0.0 and normalized.y != 0.0:
+		var side_x := Vector2i(roundi(next_grid.x), roundi(player.grid_position.y))
+		var side_y := Vector2i(roundi(player.grid_position.x), roundi(next_grid.y))
+		if not is_walkable(side_x) or not is_walkable(side_y):
+			return false
+	player.move_manual(normalized, delta, visual_direction)
+	return true
+
+func _input_to_grid(input_direction: Vector2) -> Vector2:
+	if input_direction.is_zero_approx():
+		return Vector2.ZERO
+	var origin := ground.map_to_local(Vector2i.ZERO)
+	var basis_x := ground.map_to_local(Vector2i.RIGHT) - origin
+	var basis_y := ground.map_to_local(Vector2i.DOWN) - origin
+	if input_direction.x != 0.0 and input_direction.y != 0.0:
+		# Keep diagonal grid vectors intact; the isometric projection and
+		# motion_delta() provide the TileMap angle/speed correction.
+		return input_direction.normalized()
+	# A single key is screen-cardinal; inverse-project it into grid space.
+	var determinant := basis_x.x * basis_y.y - basis_x.y * basis_y.x
+	if is_zero_approx(determinant):
+		return input_direction.normalized()
+	return Vector2(
+		(input_direction.x * basis_y.y - input_direction.y * basis_y.x) / determinant,
+		(basis_x.x * input_direction.y - basis_x.y * input_direction.x) / determinant
+	).normalized()
+
+func _movement_locked() -> bool:
+	return interaction_open or (ring_menu != null and ring_menu.detail != null)
+
 func update_residents(day: int) -> void:
+	GuestSession.set_game_day(day)
+	if resident_day == day:
+		return
+	resident_day = day
 	for npc in residents:
 		npc.set_joined(day >= npc.join_day)
+		npc.refresh_trade_request(day)
 
 func _process(_delta: float) -> void:
 	update_residents($WorldClock.day)
-	for building in $Objects.get_children():
-		if building.has_meta("ground_cell"):
-			building.visible = $TerrainReveal.is_landed(building.get_meta("ground_cell"))
-	var points := PackedVector2Array()
-	if not player.route.is_empty():
-		points.append(player.position)
-		for cell in player.route:
-			points.append(ground.to_global(ground.map_to_local(cell)))
-	route_line.points = points
+	_update_market_event($WorldClock.day)
+	_update_interaction_target()
+	_update_interaction_panel()
+	$HUD/Currency/Value.text = "%s  ·  추억 %d" % [GuestSession.format_nut(GuestSession.nut), GuestSession.blocks]
 
-func _on_arrived(cell: Vector2i) -> void:
-	status.text = "Arrived at (%d, %d). Click another tile." % [cell.x, cell.y]
+func _setup_interaction_panel() -> void:
+	interaction_panel = PanelContainer.new()
+	interaction_panel.name = "InteractionPanel"
+	interaction_panel.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("fff8e8")
+	style.border_color = Color("b8824f")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
+	interaction_panel.add_theme_stylebox_override("panel", style)
+	interaction_label = Label.new()
+	interaction_label.add_theme_color_override("font_color", Color("493b2b"))
+	interaction_label.add_theme_font_size_override("font_size", 14)
+	interaction_panel.add_child(interaction_label)
+	$HUD.add_child(interaction_panel)
+
+func _update_interaction_panel() -> void:
+	if interaction_panel == null:
+		return
+	var visible_prompt := interaction_target != null and not interaction_open and ring_menu == null
+	if visible_prompt != interaction_panel_state:
+		interaction_panel_state = visible_prompt
+		if visible_prompt:
+			_show_interaction_panel()
+		else:
+			_hide_interaction_panel()
+	if not visible_prompt:
+		return
+	interaction_label.text = "SPACE  ·  %s에게 말 걸기" % interaction_target.resident_name
+	var viewport_size := get_viewport_rect().size
+	var player_screen_position: Vector2 = $Camera2D.get_canvas_transform() * player.global_position
+	# Follow the player, but stay fully to the left of the rendered sprite.
+	var left_edge := player_screen_position.x - 24.0
+	var panel_x := left_edge - interaction_panel.size.x - 24.0
+	var panel_y := player_screen_position.y - interaction_panel.size.y * 0.5
+	interaction_panel.position = Vector2(clampf(panel_x, 8.0, viewport_size.x - interaction_panel.size.x - 8.0), clampf(panel_y, 8.0, viewport_size.y - interaction_panel.size.y - 8.0))
+
+func _show_interaction_panel() -> void:
+	interaction_panel.visible = true
+	interaction_panel.pivot_offset = Vector2(interaction_panel.size.x, interaction_panel.size.y * 0.5)
+	interaction_panel.scale = Vector2(0.82, 0.82)
+	interaction_panel.modulate.a = 0.0
+	interaction_label.modulate.a = 0.0
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(interaction_panel, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(interaction_panel, "modulate:a", 1.0, 0.12)
+	tween.tween_property(interaction_label, "modulate:a", 1.0, 0.1).set_delay(0.08)
+
+func _hide_interaction_panel() -> void:
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(interaction_panel, "scale", Vector2(0.86, 0.86), 0.1)
+	tween.tween_property(interaction_panel, "modulate:a", 0.0, 0.08)
+	tween.chain().tween_callback(func(): interaction_panel.visible = false)
+
+func _setup_currency() -> void:
+	var panel := PanelContainer.new()
+	panel.name = "Currency"
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.position = Vector2(-268, 22)
+	panel.size = Vector2(246, 54)
+	var paper := StyleBoxFlat.new()
+	paper.bg_color = Color("fff8ea")
+	paper.border_color = Color("684329")
+	paper.set_border_width_all(2)
+	paper.set_corner_radius_all(9)
+	panel.add_theme_stylebox_override("panel", paper)
+	$HUD.add_child(panel)
+	var value := Label.new()
+	value.name = "Value"
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	value.add_theme_font_override("font", preload("res://font/Moneygraphy-Pixel.ttf"))
+	value.add_theme_font_size_override("font_size", 18)
+	value.add_theme_color_override("font_color", Color("527a35"))
+	panel.add_child(value)
+
+func _toggle_ring_menu() -> void:
+	if interaction_open:
+		return
+	if ring_menu != null:
+		ring_menu.close()
+		return
+	ring_menu = RingMenu.new()
+	$HUD.add_child(ring_menu)
+	ring_menu.track(player.get_node("Sprite2D"))
+	ring_menu.show_at(player.get_node("Sprite2D").global_position)
+	ring_menu.closed.connect(func(): ring_menu = null)
+
+func _update_interaction_target() -> void:
+	var nearest: Node2D
+	var closest := INF
+	for npc in residents:
+		if npc.joined:
+			var distance: float = player.global_position.distance_to(npc.global_position)
+			if distance < closest:
+				closest = distance
+				nearest = npc
+	interaction_target = nearest if closest <= INTERACTION_DISTANCE else null
+	resource_target = null
+	var resource_distance := INF
+	for resource in $Objects/Resources.get_children():
+		var distance: float = player.global_position.distance_to(resource.global_position)
+		if distance < resource_distance:
+			resource_distance = distance
+			resource_target = resource
+	if resource_distance > INTERACTION_DISTANCE:
+		resource_target = null
+	for npc in residents:
+		var in_notice_range: bool = player.global_position.distance_to(npc.global_position) <= TRADE_NOTICE_DISTANCE
+		npc.set_trade_request_visible(npc.joined and npc.can_trade_today() and in_notice_range and not interaction_open)
+		npc.set_interaction_available(npc == interaction_target and not interaction_open)
+		npc.set_player_nearby(npc == interaction_target and not interaction_open)
+
+func _spawn_resources() -> void:
+	var container := Node2D.new()
+	container.name = "Resources"
+	container.y_sort_enabled = true
+	$Objects.add_child(container)
+	var placements := [{"cell": Vector2i(2, 8), "source": "grove_0", "label": "나무", "tool": "axe"}, {"cell": Vector2i(10, 8), "source": "quarry_0", "label": "돌", "tool": "pickaxe"}, {"cell": Vector2i(7, 12), "source": "meadow_0", "label": "꽃", "tool": "hand"}]
+	for placement in placements:
+		var node := ResourceNode.new()
+		node.name = str(placement.source)
+		node.position = ground.map_to_local(placement.cell)
+		node.source_id = str(placement.source)
+		node.label = str(placement.label)
+		node.tool = str(placement.tool)
+		node.life = life
+		node.player = player
+		container.add_child(node)
+
+func _update_market_event(day: int) -> void:
+	if event_day == day or market.cards.is_empty():
+		return
+	var proposal: Dictionary = mock_event_ai.proposal_for(day, event_director.valid_candidate_ids())
+	var result: Dictionary = event_director.start_day(day, proposal)
+	if result.get("ok", false):
+		event_day = day
+		status.text = "오늘의 경제 사건: %s" % result.get("headline", "새 소식")
+
+func _begin_interaction() -> void:
+	interaction_open = true
+	var active_target := interaction_target
+	active_target.set_interacting(true)
+	player.route.clear()
+	var dialogue := TradeDialogue.instantiate() as NpcTradeDialogue
+	$HUD.add_child(dialogue)
+	dialogue.begin(active_target)
+	dialogue.trade_requested.connect(func(_npc):
+		if not active_target.can_trade_today():
+			active_target.set_interacting(false)
+			interaction_open = false
+			status.text = "%s과(와)의 오늘 거래는 모두 마쳤어요." % active_target.resident_name
+			return
+		var widget := TradeWidget.new()
+		widget.configure(active_target)
+		$HUD.add_child(widget)
+		widget.finished.connect(func(success: bool):
+			active_target.set_interacting(false)
+			interaction_open = false
+			status.text = "추억 액자에 거래 노드 %d개 · 잔액 %s" % [GuestSession.blocks, GuestSession.format_nut(GuestSession.nut)] if success else "거래를 다음에 하기로 했어요."
+		)
+	)
+	dialogue.gift_requested.connect(func(_npc):
+		var widget := GiftWidget.new()
+		widget.configure(active_target)
+		$HUD.add_child(widget)
+		widget.finished.connect(func(success: bool):
+			active_target.set_interacting(false)
+			interaction_open = false
+			status.text = "선물의 마음이 추억 액자에 남았어요." if success else "선물은 다음에 건네도 괜찮아요."
+		)
+	)
+	dialogue.talk_requested.connect(func(npc):
+		var result: Dictionary = npc.daily_talk(DialogScriptManager)
+		npc.set_interacting(false)
+		interaction_open = false
+		status.text = str(result.get("reason", "%s와 대화했어요." % npc.resident_name)) if not result.get("ok", false) else "%s와 대화했어요." % npc.resident_name
+	)
+	dialogue.closed.connect(func():
+		active_target.set_interacting(false)
+		interaction_open = false
+		status.text = "추억 액자에 거래 노드 %d개 · 잔액 %s" % [GuestSession.blocks, GuestSession.format_nut(GuestSession.nut)]
+	)

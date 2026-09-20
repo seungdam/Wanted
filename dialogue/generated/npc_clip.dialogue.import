@@ -1,0 +1,16 @@
+[remap]
+
+importer="dialogue_manager"
+importer_version=18
+type="Resource"
+uid="uid://5nkm5gukadad"
+path="res://.godot/imported/npc_clip.dialogue-1cdbe613e45976f8a4d351bd938730da.tres"
+
+[deps]
+
+source_file="res://dialogue/generated/npc_clip.dialogue"
+dest_files=["res://.godot/imported/npc_clip.dialogue-1cdbe613e45976f8a4d351bd938730da.tres"]
+
+[params]
+
+defaults=true

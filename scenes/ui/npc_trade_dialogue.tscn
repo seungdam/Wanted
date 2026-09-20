@@ -1,0 +1,172 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/npc_trade_dialogue.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://font/Moneygraphy-Pixel.ttf" id="3_font"]
+[ext_resource type="Script" path="res://scripts/resident_portrait.gd" id="4_portrait_frame"]
+
+[ext_resource type="Theme" path="res://assets/ui/themes/cozy_meadow.tres" id="5_theme"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleDialogueContext"]
+
+[sub_resource type="StyleBoxFlat" id="BubblePanel"]
+content_margin_left = 36.0
+content_margin_top = 24.0
+content_margin_right = 36.0
+content_margin_bottom = 24.0
+bg_color = Color(0.98, 0.97, 0.91, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.72, 0.51, 0.31, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+
+[sub_resource type="StyleBoxFlat" id="Tag"]
+bg_color = Color(0.97, 0.87, 0.66, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.64, 0.43, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_left = 18
+corner_radius_bottom_right = 18
+
+[node name="NpcTradeDialogue" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_script")
+theme = ExtResource("5_theme")
+texture_filter = 2
+
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.08, 0.1, 0.07, 0.38)
+
+[node name="Portrait" type="PanelContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -448.0
+offset_top = -224.0
+offset_right = -288.0
+offset_bottom = -64.0
+z_index = 2
+mouse_filter = 2
+script = ExtResource("4_portrait_frame")
+
+[node name="Bubble" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -480.0
+offset_top = -260.0
+offset_right = 480.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("BubblePanel")
+
+[node name="ContentMargin" type="MarginContainer" parent="Bubble"]
+layout_mode = 2
+theme_override_constants/margin_left = 164
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
+
+[node name="Content" type="VBoxContainer" parent="Bubble/ContentMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SpeakerContext" type="Control" parent="Bubble/ContentMargin/Content"]
+custom_minimum_size = Vector2(148, 40)
+layout_mode = 2
+size_flags_horizontal = 0
+
+[node name="Tag" type="Panel" parent="Bubble/ContentMargin/Content/SpeakerContext"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Tag")
+
+[node name="Speaker" type="Label" parent="Bubble/ContentMargin/Content/SpeakerContext"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+z_index = 1
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.18, 0.34, 0.16, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 18
+vertical_alignment = 1
+horizontal_alignment = 1
+text = "리벳  ·  마을 주민"
+
+[node name="DialogueContext" type="PanelContainer" parent="Bubble/ContentMargin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleDialogueContext")
+
+[node name="Body" type="Label" parent="Bubble/ContentMargin/Content/DialogueContext"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.27, 0.23, 0.19, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 21
+autowrap_mode = 2
+text = "도토리, 마을에서 거래를 한 번 해볼래?"
+
+[node name="Actions" type="HBoxContainer" parent="Bubble/ContentMargin/Content"]
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="Bubble/ContentMargin/Content/Actions"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Alternate" type="Button" parent="Bubble/ContentMargin/Content/Actions"]
+visible = false
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+
+[node name="Talk" type="Button" parent="Bubble/ContentMargin/Content/Actions"]
+visible = false
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+text = "대화하기"
+
+[node name="Action" type="Button" parent="Bubble/ContentMargin/Content/Actions"]
+custom_minimum_size = Vector2(190, 42)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+text = "다음"
+
+[connection signal="pressed" from="Bubble/ContentMargin/Content/Actions/Alternate" to="." method="_cancel"]
+[connection signal="pressed" from="Bubble/ContentMargin/Content/Actions/Talk" to="." method="_talk"]
+[connection signal="pressed" from="Bubble/ContentMargin/Content/Actions/Action" to="." method="_on_action"]

@@ -70,4 +70,5 @@ func solar_direction(time_of_day: float) -> Vector3:
 
 func time_text() -> String:
 	var minutes := floori(hour * 60.0)
+	@warning_ignore("integer_division")
 	return "%02d:%02d" % [minutes / 60, minutes % 60]

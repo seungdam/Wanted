@@ -2,10 +2,15 @@
 
 [ext_resource type="Script" uid="uid://bwfbx8jf58tvp" path="res://ai/tasks/choose_wander_destination.gd" id="1"]
 [ext_resource type="Script" uid="uid://cu1beay5gd3c" path="res://ai/tasks/walk_to_destination.gd" id="2"]
+[ext_resource type="Script" uid="uid://clu0ijil8qjtg" path="res://ai/tasks/show_mood_bubble.gd" id="3"]
 
 [sub_resource type="BTRandomWait" id="Wait"]
 max_duration = 3.0
 custom_name = "Rest for 1-3 seconds"
+
+[sub_resource type="BTAction" id="Mood"]
+custom_name = "Show mood bubble"
+script = ExtResource("3")
 
 [sub_resource type="BTAction" id="Choose"]
 custom_name = "Choose reachable destination (A*)"
@@ -17,8 +22,8 @@ script = ExtResource("2")
 
 [sub_resource type="BTSequence" id="Wander"]
 custom_name = "Wander around village"
-children = [SubResource("Wait"), SubResource("Choose"), SubResource("Walk")]
+children = [SubResource("Wait"), SubResource("Mood"), SubResource("Choose"), SubResource("Walk")]
 
 [resource]
-description = "Repeat: rest, choose reachable ground, walk. Visibility is handled independently by NPC."
+description = "Repeat: mood-adjusted rest, choose reachable ground, walk. Interaction pauses the BT; NPC trade data decides preferred item, event demand, then affinity price."
 root_task = SubResource("Wander")
