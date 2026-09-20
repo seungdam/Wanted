@@ -19,7 +19,7 @@ config/icon="res://icon.svg"
 
 GuestSession="*res://scripts/guest_session.gd"
 DialogScriptManager="*res://scripts/dialog_script_manager.gd"
-DialogueManager="*res://addons/dialogue_manager/dialogue_manager.gd"
+DialogueManager="*uid://c3rodes2l3gxb"
 MCPRuntime="*uid://b6nuyl4g3wafy"
 
 [dialogue_manager]

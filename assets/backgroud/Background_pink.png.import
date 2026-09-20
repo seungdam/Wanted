@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://0aaxpglbe525"
-path="res://.godot/imported/slot_selected.png-65c31725f29f6bbc314dee6ad144ed96.ctex"
+uid="uid://bd20dkmvcxt5y"
+path="res://.godot/imported/Background_pink.png-eec59a504eb8cd93ee28f91f6efda601.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/cozy_source/slot_selected.png"
-dest_files=["res://.godot/imported/slot_selected.png-65c31725f29f6bbc314dee6ad144ed96.ctex"]
+source_file="res://assets/backgroud/Background_pink.png"
+dest_files=["res://.godot/imported/Background_pink.png-eec59a504eb8cd93ee28f91f6efda601.ctex"]
 
 [params]
 
