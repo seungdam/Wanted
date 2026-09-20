@@ -1,86 +1,8 @@
 [gd_scene format=3 uid="uid://bxla2kk4q5008"]
 
-[ext_resource type="PackedScene" uid="uid://gk4tps4q7upo" path="res://scenes/player.tscn" id="2"]
-[ext_resource type="Script" uid="uid://wj17ympol0iq" path="res://scripts/world_clock.gd" id="3"]
-[ext_resource type="Script" uid="uid://dahqh80oxuhxx" path="res://scripts/time_bar.gd" id="4"]
-[ext_resource type="Script" uid="uid://c00wuy0aessky" path="res://scripts/follow_camera.gd" id="5"]
-[ext_resource type="PackedScene" path="res://scenes/village_topdown.tscn" id="6"]
+[ext_resource type="PackedScene" uid="uid://dnp16mklxafvr" path="res://scenes/village_topdown.tscn" id="6"]
 
 [node name="Village" type="Node2D" unique_id=154888197]
 texture_filter = 1
-
-[node name="Objects" type="Node2D" parent="." unique_id=626829487]
-visible = false
-y_sort_enabled = true
-
-[node name="Player" parent="Objects" unique_id=929295750 instance=ExtResource("2")]
-
-[node name="Trees" type="Node2D" parent="Objects" unique_id=1626052518]
-y_sort_enabled = true
-
-[node name="Camera2D" type="Camera2D" parent="." unique_id=1491756292]
-position = Vector2(0, 280)
-enabled = false
-zoom = Vector2(4, 4)
-script = ExtResource("5")
-tracking_offset = Vector2(0, 0)
-
-[node name="HUD" type="CanvasLayer" parent="." unique_id=1436944886]
-layer = 10
-visible = false
-
-[node name="TimeBar" type="Control" parent="HUD" unique_id=1810804671]
-layout_mode = 3
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -310.0
-offset_top = 18.0
-offset_right = 310.0
-offset_bottom = 114.0
-grow_horizontal = 2
-script = ExtResource("4")
-clock_path = NodePath("../../WorldClock")
-
-[node name="Instructions" type="Label" parent="HUD" unique_id=197332428]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 28.0
-offset_top = -80.0
-offset_right = 560.0
-offset_bottom = -48.0
-theme_override_colors/font_color = Color(0.96, 0.88, 0.69, 1)
-theme_override_colors/font_shadow_color = Color(0.15, 0.12, 0.07, 1)
-theme_override_constants/shadow_offset_x = 2
-theme_override_constants/shadow_offset_y = 2
-theme_override_font_sizes/font_size = 16
-text = "LITTLE VILLAGE    /    Click a path to wander"
-
-[node name="Status" type="Label" parent="HUD" unique_id=868836253]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 28.0
-offset_top = -48.0
-offset_right = 620.0
-offset_bottom = -16.0
-theme_override_colors/font_color = Color(0.96, 0.9, 0.76, 1)
-theme_override_colors/font_shadow_color = Color(0.15, 0.12, 0.07, 1)
-theme_override_constants/shadow_offset_x = 2
-theme_override_constants/shadow_offset_y = 2
-text = "Welcome home. A new neighbor arrives each day."
-
-[node name="ArrivalFade" type="ColorRect" parent="HUD" unique_id=178656920]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0.06, 0.09, 0.07, 1)
-
-[node name="WorldClock" type="Node" parent="." unique_id=1988715721]
-script = ExtResource("3")
 
 [node name="TopdownVillage" parent="." unique_id=909587206 instance=ExtResource("6")]

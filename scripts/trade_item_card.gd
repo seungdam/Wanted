@@ -1,7 +1,12 @@
 class_name TradeItemCard
 extends PanelContainer
 
+signal selected
 var item := "wood"
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		selected.emit()
 
 func _get_drag_data(_at_position: Vector2):
 	if GuestSession.item_count(item) < 1:

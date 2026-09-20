@@ -22,7 +22,7 @@ func _ready() -> void:
 		push_error("Could not load data/scenarios.xlsx")
 	_make_theme()
 	var background := TextureRect.new()
-	background.texture = preload("res://assets/ui/title_background.jpg")
+	background.texture = preload("res://assets/backgroud/title_background.jpg")
 	background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

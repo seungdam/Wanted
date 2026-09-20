@@ -30,3 +30,10 @@ func _drop_data(_at_position: Vector2, data) -> void:
 		add_theme_stylebox_override("panel", _slot_style(true))
 		hint.text = "%s\n전달 준비 ✓" % GuestSession.item_label(required_item)
 		item_dropped.emit()
+
+func reset(item: String) -> void:
+	required_item = item
+	delivered = false
+	add_theme_stylebox_override("panel", _slot_style(false))
+	if hint != null:
+		hint.text = "여기에\n놓기"

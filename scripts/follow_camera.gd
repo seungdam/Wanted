@@ -1,6 +1,6 @@
 extends Camera2D
 
-@export var target_path: NodePath = NodePath("../Objects/Player")
+@export var target_path: NodePath = NodePath("../Player")
 @export var tracking_enabled := true
 @export_range(0.1, 20.0, 0.1) var tracking_speed := 5.0
 @export var tracking_offset := Vector2(0, -90)
