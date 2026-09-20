@@ -301,7 +301,7 @@ func close() -> void:
 	queue_free()
 
 func _set_world_hud_visible(shown: bool) -> void:
-	for node_name in ["TimeBar", "Currency", "Instructions", "Status"]:
+	for node_name in ["TimeBar", "Currency", "Instructions", "Status", "Hint"]:
 		var hud_node := get_parent().get_node_or_null(NodePath(node_name)) as CanvasItem
 		if hud_node != null:
 			hud_node.visible = shown

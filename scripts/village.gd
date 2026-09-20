@@ -38,9 +38,7 @@ var event_director := EventDirectorScript.new(market)
 var mock_event_ai := MockEventAIScript.new()
 var event_day := -1
 var resource_target: Node2D
-var interaction_panel: PanelContainer
-var interaction_label: Label
-var interaction_panel_state := false
+var interaction_latched := false
 
 @onready var ground: TileMapLayer = $Ground
 @onready var npc_action_area: TileMapLayer = get_node_or_null(npc_action_area_path) as TileMapLayer
@@ -60,10 +58,9 @@ func _ready() -> void:
 	update_residents($WorldClock.day)
 	$Camera2D._process(0.0)
 	$Camera2D.force_update_scroll()
-	$HUD/Instructions.text = "WASD 이동  /  1~5 도구  /  SPACE 상호작용  /  R 방  /  B 상점"
-	$HUD/Status.text = "리벳에게 말을 걸어 첫 거래를 배워 보세요."
+	$HUD/Instructions.text = "WASD 이동  /  1~5 도구  /  SPACE 채집  /  R 방  /  B 상점"
+	$HUD/Status.text = "주민에게 다가가 선물을 건네 보세요."
 	_setup_currency()
-	_setup_interaction_panel()
 	var fade := $HUD/ArrivalFade
 	var tween := create_tween()
 	tween.tween_property(fade, "color:a", 0.0, 0.25)
@@ -149,8 +146,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if resource_target != null:
 			var result: Dictionary = resource_target.harvest()
 			status.text = str(result.get("reason", "채집 완료")) if not result.get("ok", false) else "채집 완료 · %s" % result.entry.get("item", "자원")
-		elif interaction_target != null:
-			_begin_interaction()
 		get_viewport().set_input_as_handled()
 
 func _physics_process(delta: float) -> void:
@@ -216,68 +211,9 @@ func _process(_delta: float) -> void:
 	update_residents($WorldClock.day)
 	_update_market_event($WorldClock.day)
 	_update_interaction_target()
-	_update_interaction_panel()
+	if interaction_target != null and not interaction_open and not interaction_latched:
+		_begin_interaction()
 	$HUD/Currency/Value.text = "%s  ·  추억 %d" % [GuestSession.format_nut(GuestSession.nut), GuestSession.blocks]
-
-func _setup_interaction_panel() -> void:
-	interaction_panel = PanelContainer.new()
-	interaction_panel.name = "InteractionPanel"
-	interaction_panel.visible = false
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("fff8e8")
-	style.border_color = Color("b8824f")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(8)
-	style.content_margin_left = 10
-	style.content_margin_right = 10
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
-	interaction_panel.add_theme_stylebox_override("panel", style)
-	interaction_label = Label.new()
-	interaction_label.add_theme_color_override("font_color", Color("493b2b"))
-	interaction_label.add_theme_font_size_override("font_size", 14)
-	interaction_panel.add_child(interaction_label)
-	$HUD.add_child(interaction_panel)
-
-func _update_interaction_panel() -> void:
-	if interaction_panel == null:
-		return
-	var visible_prompt := interaction_target != null and not interaction_open and ring_menu == null
-	if visible_prompt != interaction_panel_state:
-		interaction_panel_state = visible_prompt
-		if visible_prompt:
-			_show_interaction_panel()
-		else:
-			_hide_interaction_panel()
-	if not visible_prompt:
-		return
-	interaction_label.text = "SPACE  ·  %s에게 말 걸기" % interaction_target.resident_name
-	var viewport_size := get_viewport_rect().size
-	var player_screen_position: Vector2 = $Camera2D.get_canvas_transform() * player.global_position
-	# Follow the player, but stay fully to the left of the rendered sprite.
-	var left_edge := player_screen_position.x - 24.0
-	var panel_x := left_edge - interaction_panel.size.x - 24.0
-	var panel_y := player_screen_position.y - interaction_panel.size.y * 0.5
-	interaction_panel.position = Vector2(clampf(panel_x, 8.0, viewport_size.x - interaction_panel.size.x - 8.0), clampf(panel_y, 8.0, viewport_size.y - interaction_panel.size.y - 8.0))
-
-func _show_interaction_panel() -> void:
-	interaction_panel.visible = true
-	interaction_panel.pivot_offset = Vector2(interaction_panel.size.x, interaction_panel.size.y * 0.5)
-	interaction_panel.scale = Vector2(0.82, 0.82)
-	interaction_panel.modulate.a = 0.0
-	interaction_label.modulate.a = 0.0
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(interaction_panel, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(interaction_panel, "modulate:a", 1.0, 0.12)
-	tween.tween_property(interaction_label, "modulate:a", 1.0, 0.1).set_delay(0.08)
-
-func _hide_interaction_panel() -> void:
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(interaction_panel, "scale", Vector2(0.86, 0.86), 0.1)
-	tween.tween_property(interaction_panel, "modulate:a", 0.0, 0.08)
-	tween.chain().tween_callback(func(): interaction_panel.visible = false)
 
 func _setup_currency() -> void:
 	var panel := PanelContainer.new()
@@ -323,6 +259,8 @@ func _update_interaction_target() -> void:
 				closest = distance
 				nearest = npc
 	interaction_target = nearest if closest <= INTERACTION_DISTANCE else null
+	if interaction_target == null:
+		interaction_latched = false
 	resource_target = null
 	var resource_distance := INF
 	for resource in $Objects/Resources.get_children():
@@ -335,8 +273,7 @@ func _update_interaction_target() -> void:
 	for npc in residents:
 		var in_notice_range: bool = player.global_position.distance_to(npc.global_position) <= TRADE_NOTICE_DISTANCE
 		npc.set_trade_request_visible(npc.joined and npc.can_trade_today() and in_notice_range and not interaction_open)
-		npc.set_interaction_available(npc == interaction_target and not interaction_open)
-		npc.set_player_nearby(npc == interaction_target and not interaction_open)
+		npc.set_player_nearby(npc == interaction_target)
 
 func _spawn_resources() -> void:
 	var container := Node2D.new()
@@ -365,43 +302,35 @@ func _update_market_event(day: int) -> void:
 		status.text = "오늘의 경제 사건: %s" % result.get("headline", "새 소식")
 
 func _begin_interaction() -> void:
+	if interaction_target == null:
+		return
 	interaction_open = true
+	interaction_latched = true
 	var active_target := interaction_target
 	active_target.set_interacting(true)
 	player.route.clear()
 	var dialogue := TradeDialogue.instantiate() as NpcTradeDialogue
 	$HUD.add_child(dialogue)
 	dialogue.begin(active_target)
-	dialogue.trade_requested.connect(func(_npc):
-		if not active_target.can_trade_today():
-			active_target.set_interacting(false)
-			interaction_open = false
-			status.text = "%s과(와)의 오늘 거래는 모두 마쳤어요." % active_target.resident_name
-			return
-		var widget := TradeWidget.new()
-		widget.configure(active_target)
-		$HUD.add_child(widget)
-		widget.finished.connect(func(success: bool):
-			active_target.set_interacting(false)
-			interaction_open = false
-			status.text = "추억 액자에 거래 노드 %d개 · 잔액 %s" % [GuestSession.blocks, GuestSession.format_nut(GuestSession.nut)] if success else "거래를 다음에 하기로 했어요."
-		)
-	)
 	dialogue.gift_requested.connect(func(_npc):
 		var widget := GiftWidget.new()
 		widget.configure(active_target)
 		$HUD.add_child(widget)
 		widget.finished.connect(func(success: bool):
-			active_target.set_interacting(false)
-			interaction_open = false
-			status.text = "선물의 마음이 추억 액자에 남았어요." if success else "선물은 다음에 건네도 괜찮아요."
+			if not success:
+				active_target.set_interacting(false)
+				interaction_open = false
+				status.text = "선물은 다음에 건네도 괜찮아요."
+				return
+			var thanks := TradeDialogue.instantiate() as NpcTradeDialogue
+			$HUD.add_child(thanks)
+			thanks.begin_thanks(active_target, widget.last_taste)
+			thanks.closed.connect(func():
+				active_target.set_interacting(false)
+				interaction_open = false
+				status.text = "선물의 마음이 추억 액자에 남았어요."
+			)
 		)
-	)
-	dialogue.talk_requested.connect(func(npc):
-		var result: Dictionary = npc.daily_talk(DialogScriptManager)
-		npc.set_interacting(false)
-		interaction_open = false
-		status.text = str(result.get("reason", "%s와 대화했어요." % npc.resident_name)) if not result.get("ok", false) else "%s와 대화했어요." % npc.resident_name
 	)
 	dialogue.closed.connect(func():
 		active_target.set_interacting(false)

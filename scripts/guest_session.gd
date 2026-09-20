@@ -20,6 +20,7 @@ var settled_offer_ids: Dictionary = {}
 var collection: Dictionary = {}
 var memory_frame: Array[int] = []
 var room: Dictionary = {}
+var unlocked_actions := {"mock_investment": false, "securities_trading": false}
 
 # Only economic transactions become memories. Conversation, gifts, quests,
 # crafting and decoration remain in the ledger without creating a frame node.
@@ -42,6 +43,7 @@ func begin(player_name: String, wallet_address: String) -> void:
 	collection.clear()
 	memory_frame.clear()
 	room.clear()
+	unlocked_actions = {"mock_investment": false, "securities_trading": false}
 
 func set_game_day(day: int) -> void:
 	current_day = maxi(day, 1)
@@ -49,6 +51,12 @@ func set_game_day(day: int) -> void:
 func set_game_clock(day: int, minute: int) -> void:
 	set_game_day(day)
 	game_minute = clampi(minute, 0, 1439)
+
+func unlock_action(action_id: String) -> void:
+	unlocked_actions[action_id] = true
+
+func is_action_unlocked(action_id: String) -> bool:
+	return bool(unlocked_actions.get(action_id, false))
 
 func volt_to_nut(value: int) -> int:
 	return value * NUTS_PER_VOLT
@@ -70,7 +78,7 @@ func create_trade_offer(resident: String, item: String, base_unit_price: int, of
 	offer_sequence += 1
 	return {"id": "offer-%03d" % offer_sequence, "day": current_day, "event_id": market_event.id, "resident_id": resident, "item_id": item, "quantity": 1, "base_unit_price": base_unit_price, "offered_unit_price": offered_unit_price, "counter_limit": counter_limit, "state": "ready"}
 
-func record_transaction(type: String, from: String, to: String, amount: int, details := {}, creates_memory := false) -> Dictionary:
+func record_transaction(type: String, from: String, to: String, amount: int, details := {}, _creates_memory := false) -> Dictionary:
 	transaction_sequence += 1
 	var block := 0
 	var should_create_memory := type in MEMORY_TRANSACTION_TYPES

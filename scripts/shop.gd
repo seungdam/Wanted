@@ -21,4 +21,4 @@ func _render() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ESCAPE, KEY_R]:
-		get_tree().change_scene_to_file("res://scenes/village.tscn")
+	get_tree().change_scene_to_file("res://scenes/village.tscn")

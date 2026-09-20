@@ -1,7 +1,7 @@
 class_name CozyUIAtlas
 extends RefCounted
 
-const SLOT_EMPTY := preload("res://assets/ui/cozy_source/slot_empty.png")
+const SLOT_EMPTY := preload("res://assets/ui/cozy_source/slot_defualt.png")
 const SLOT_HOVER := preload("res://assets/ui/cozy_source/slot_selected.png")
 
 static func slot_style(selected: bool = false) -> StyleBoxTexture:

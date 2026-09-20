@@ -7,6 +7,14 @@ const PORTRAIT_TEXTURES := {
 	"nut": preload("res://assets/ui/portraits/portrait_nut_256.png"),
 	"clip": preload("res://assets/ui/portraits/portrait_clip_256.png"),
 	"screw": preload("res://assets/ui/portraits/portrait_screw_256.png"),
+	"washer": preload("res://assets/ui/portraits/portrait_washer_256.png"),
+	"villager_c": preload("res://assets/ui/portraits/portrait_villager_c_256.png"),
+	"villager_b": preload("res://assets/ui/portraits/portrait_villager_b_256.png"),
+	"spanner": preload("res://assets/ui/portraits/portrait_spanner_256.png"),
+	"gear": preload("res://assets/ui/portraits/portrait_gear_256.png"),
+	"fuse": preload("res://assets/ui/portraits/portrait_fuse_256.png"),
+	"diode": preload("res://assets/ui/portraits/portrait_diode_256.png"),
+	"coil": preload("res://assets/ui/portraits/portrait_coil_256.png"),
 }
 
 @export var resident_id := "rivet":

@@ -147,19 +147,6 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Alternate" type="Button" parent="Bubble/ContentMargin/Content/Actions"]
-visible = false
-layout_mode = 2
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 16
-
-[node name="Talk" type="Button" parent="Bubble/ContentMargin/Content/Actions"]
-visible = false
-layout_mode = 2
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 16
-text = "대화하기"
-
 [node name="Action" type="Button" parent="Bubble/ContentMargin/Content/Actions"]
 custom_minimum_size = Vector2(190, 42)
 layout_mode = 2
@@ -167,6 +154,4 @@ theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 16
 text = "다음"
 
-[connection signal="pressed" from="Bubble/ContentMargin/Content/Actions/Alternate" to="." method="_cancel"]
-[connection signal="pressed" from="Bubble/ContentMargin/Content/Actions/Talk" to="." method="_talk"]
 [connection signal="pressed" from="Bubble/ContentMargin/Content/Actions/Action" to="." method="_on_action"]

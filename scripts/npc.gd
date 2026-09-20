@@ -419,12 +419,12 @@ func set_interacting(value: bool) -> void:
 	if value:
 		route.clear()
 
-func set_interaction_available(value: bool) -> void:
+func set_interaction_available(_value: bool) -> void:
 	# Interaction is communicated through the mood/trade bubble; no SPACE badge.
 	if interaction_prompt != null:
 		interaction_prompt.visible = false
 
-func set_trade_request_visible(value: bool) -> void:
+func set_trade_request_visible(_value: bool) -> void:
 	# Trade availability is communicated by the fixed player-side panel.
 	# Do not spawn a floating request/emotion icon above the NPC.
 	if request_shake != null:

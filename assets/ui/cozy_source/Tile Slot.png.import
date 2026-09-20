@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cu12ycj5v7noy"
-path="res://.godot/imported/tree.png-4c56b511611b8dc35ff71e7a19612e36.ctex"
+uid="uid://cwynypooxkw30"
+path="res://.godot/imported/Tile Slot.png-ecf73e369204440b30a97b66a8fa458d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/world/ready/tree.png"
-dest_files=["res://.godot/imported/tree.png-4c56b511611b8dc35ff71e7a19612e36.ctex"]
+source_file="res://assets/ui/cozy_source/Tile Slot.png"
+dest_files=["res://.godot/imported/Tile Slot.png-ecf73e369204440b30a97b66a8fa458d.ctex"]
 
 [params]
 

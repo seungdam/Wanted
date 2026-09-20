@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/ui/cozy_source/Tile Slot2.png" id="1"]
+
+[node name="CozyGridSlot" type="Sprite2D"]
+texture = ExtResource("1")
+texture_filter = 1
+scale = Vector2(0.5, 0.5)

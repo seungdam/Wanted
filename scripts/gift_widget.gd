@@ -9,7 +9,7 @@ var target_npc
 var message: Label
 var close_button: Button
 var gift_completed := false
-var mode := "gift"
+var last_taste := "neutral"
 
 func configure(npc) -> void:
 	target_npc = npc
@@ -43,20 +43,12 @@ func _ready() -> void:
 	title.add_theme_color_override("font_color", Color("684329"))
 	box.add_child(title)
 	message = Label.new()
-	message.text = "선물은 주민의 취향에 따라 관계와 오늘의 거래 조건을 바꿔요."
+	message.text = "선물은 주민의 취향에 따라 관계를 바꿔요."
 	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	message.add_theme_font_size_override("font_size", 16)
 	message.add_theme_color_override("font_color", Color("594b3d"))
 	box.add_child(message)
-	var modes := HBoxContainer.new()
-	modes.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(modes)
-	for entry in [["선물", "gift"], ["부탁 돕기", "request"]]:
-		var mode_button := Button.new()
-		mode_button.text = entry[0]
-		mode_button.pressed.connect(func(): _set_mode(entry[1]))
-		modes.add_child(mode_button)
 	var choices := GridContainer.new()
 	choices.columns = 5
 	choices.add_theme_constant_override("h_separation", 10)
@@ -95,17 +87,12 @@ func _make_item_button(item: String) -> Button:
 func _give(item: String) -> void:
 	if target_npc == null or gift_completed:
 		return
-	var result: Dictionary = target_npc.receive_gift(item) if mode == "gift" else target_npc.complete_request(item)
+	var result: Dictionary = target_npc.receive_gift(item)
 	message.text = result.message if result.ok else result.reason
 	if result.ok:
 		gift_completed = true
-	close_button.text = "마을로 돌아가기"
-
-func _set_mode(next_mode: String) -> void:
-	if gift_completed:
-		return
-	mode = next_mode
-	message.text = "부탁: %s 1개를 전달하면 호감도 +%d" % [GuestSession.item_label(target_npc.request_material), target_npc.affection_weights.quest] if mode == "request" else "선물은 주민의 취향에 따라 관계와 오늘의 거래 조건을 바꿔요."
+		last_taste = str(result.get("taste", last_taste))
+		close_button.text = "마을로 돌아가기"
 
 func _finish(success: bool) -> void:
 	finished.emit(success)
