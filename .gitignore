@@ -17,3 +17,7 @@ desktop.ini
 
 # Keep source assets, *.import, *.uid, and addons/ tracked.
 # LimboAI's native libraries are required project dependencies.
+.tmp
+tests
+python/python
+python
