@@ -1,0 +1,16 @@
+{
+  "note": "Test balance, not final content approval. Hunting temporarily means insect catching and fishing.",
+  "sources": {
+    "grove": {"label": "숲에서 나무 채집", "item": "wood", "quantity": 3, "limit": 2, "tool": "axe", "kind": "gather"},
+    "quarry": {"label": "바위에서 돌 채굴", "item": "stone", "quantity": 2, "limit": 2, "tool": "pickaxe", "kind": "gather"},
+    "meadow": {"label": "들꽃 채집", "item": "flower", "quantity": 2, "limit": 2, "tool": "hand", "kind": "gather"},
+    "pond": {"label": "연못 낚시", "item": "fish", "quantity": 1, "limit": 2, "tool": "rod", "kind": "catch"},
+    "butterflies": {"label": "나비 포획", "item": "butterfly", "quantity": 1, "limit": 2, "tool": "net", "kind": "catch"}
+  },
+  "recipes": {
+    "wood_chair": {"label": "나무 의자", "materials": {"wood": 3}},
+    "flower_pot": {"label": "꽃 화분", "materials": {"stone": 2, "flower": 2}},
+    "wood_table": {"label": "나무 탁자", "materials": {"wood": 6, "stone": 2}}
+  },
+  "room_slots": 8
+}

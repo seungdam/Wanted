@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://jmkv3wfismcb"
+
+[deps]
+
+files=["res://data/prices.asset.translation", "res://data/prices.close.translation"]
+
+source_file="res://data/prices.csv"
+dest_files=["res://data/prices.asset.translation", "res://data/prices.close.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
